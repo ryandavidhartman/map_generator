@@ -57,32 +57,86 @@ of it, across two rounds** (plan updated accordingly):
    confirmed frontier de-duplication (2 revealed hexes sharing neighbors
    render as 10 tiles total, not 12), zero console errors.
 2. **(2026-07-04) Real dungeon/settlement maps + monster/NPC population —
-   next up, not started, split into four phases.** Confirmed firm
-   requirement, not speculative polish: today's dungeon rooms and
-   settlement districts render as abstract uniform grid-blob cells
-   (`src/engine/gridLayout.ts`), and their POI/room content is book-table
-   flavor text with no actual monster/NPC entity attached. A sibling Scala
-   project this user also maintains,
-   `~/dev/source/shadowdark-rest`, already implements this at much higher
-   fidelity (BSP-style dungeon room layouts, Voronoi-district organic
-   settlements with smoothed boundaries and curved roads, NPC population
-   wired to settlement POIs) — intent is to reuse those algorithm/data-model
-   ideas (not literal code; different stack) rather than design from
-   scratch. Four phases, in order, all sequenced before Mongo for the same
-   schema-stability reason as arbitrary-size maps:
-   a. **Real dungeon maps** — BSP-style room layout (variable-sized rooms
-      tiling a coherent, non-rectangular floor plan), no new dependency.
-   b. **Dungeon monster/NPC population** — new Monster table (transcribed
-      from the book) + lightweight NPC generator, wired into the existing
-      "Solo Monster"/"Monster Mob"/"NPC" room-content rolls.
-   c. **Real settlement maps** — Voronoi districts, organic
+   split into four phases, first one done.** Confirmed firm requirement,
+   not speculative polish: dungeon rooms and settlement districts used to
+   render as abstract uniform grid-blob cells (`src/engine/gridLayout.ts`),
+   and their POI/room content is book-table flavor text with no actual
+   monster/NPC entity attached. A sibling Scala project this user also
+   maintains, `~/dev/source/shadowdark-rest`, already implements this at
+   much higher fidelity (BSP-style dungeon room layouts, Voronoi-district
+   organic settlements with smoothed boundaries and curved roads, NPC
+   population wired to settlement POIs) — intent is to reuse those
+   algorithm/data-model ideas (not literal code; different stack) rather
+   than design from scratch. Four phases, in order, all sequenced before
+   Mongo for the same schema-stability reason as arbitrary-size maps:
+   a. ✅ **Real dungeon maps — done.** New `src/engine/dungeonLayout.ts`:
+      `generateDungeonLayout(roomCount, rng)` recursively splits a bounding
+      rectangle (BSP) into exactly `roomCount` variable-sized leaf
+      rectangles (splits the largest-area splittable rect along its longer
+      axis; `MIN_ROOM_DIM = 4` enforced by construction, no post-hoc
+      validation needed), consuming exactly `roomCount - 1` rng() calls.
+      Connectivity is now real geometric adjacency (any two rects sharing a
+      boundary segment of positive length are connected — a room can have
+      more than one neighbor) rather than the old single-`parentIndex`
+      tree; verified fully connected empirically across sizes/seeds in
+      `dungeonLayout.test.ts` rather than proven algebraically.
+      `generateDungeon.ts`'s `Room` type changed from `{ cell,
+      parentRoomId }` to `{ rect }`, and `DungeonSite` gained a top-level
+      `connections: [string, string][]`. New `src/hexgrid/DungeonMapSvg.tsx`
+      (parallel to `GridLayoutSvg.tsx`, which settlements still use)
+      renders the real rectangles + corridor lines; `data-room-id`
+      Playwright convention preserved. `gridLayout.ts` itself is untouched
+      (settlements still use it until phase (c) below). Deliberately deferred as
+      later-if-wanted polish, not required for the core upgrade:
+      corner-notch non-rectangular outline, hallway-strip carving, entrance
+      markers. No new dependency. Browser-verified via Playwright: an
+      8-room dungeon rendered 8 distinct rectangle sizes (proving real
+      variable-size rooms) and 14 corridor lines (proving multi-neighbor
+      adjacency, not a 7-edge tree); Reroll Site regenerates correctly;
+      zero console errors. 9 new tests in `dungeonLayout.test.ts`, all 169
+      Vitest tests pass, `npx tsc -b`/`npm run build` clean.
+      **Known gap, confirmed after the user reviewed a live screenshot:**
+      this is a structural upgrade, not yet a visual one — rooms render as
+      flat colored rectangles with corridor lines mostly hidden under
+      directly-adjacent rooms; no walls/doors, no grid overlay, no entrance
+      markers. User confirmed deferring this rather than blocking phase (b)
+      on it — likely bundled with phase (c)'s settlement rendering so both
+      get real visual polish together. No schema change needed later:
+      `Room.rect`/`DungeonSite.connections` already carry what a richer
+      renderer would need.
+   b. ✅ **Dungeon monster/NPC population — done.** Scope clarified before
+      writing code: name + flavor only, no combat stats (real stat blocks
+      are a confirmed **future MongoDB integration**, sequenced after the
+      Mongo backend phase, not designed yet). No Shadowdark bestiary was
+      available, so — after an initial invented list was rejected — real
+      content was sourced from the user's own B/X retro-clone compilation:
+      `~/dev/source/b_x/publication/monsters/combined-monsters.md`. New
+      `src/data/monsterTables.ts`: `MONSTERS` (148 real creature names +
+      source-document category — Animal/Undead/Humanoid/Dragon/Monstrous/
+      etc. — category is preserved for a possible future site-type-biased
+      selection, not used yet) and `NPC_TYPES` (17 archetypes — Acolyte,
+      Bandit, Noble, Trader, Veteran, etc. — from that document's own NPC
+      section; its "Men" entry expanded into 5 named sub-types, "NPC
+      Parties" excluded as a ruleset rather than a single NPC).
+      `generateDungeon.ts`'s `Room` gained `monster?: {name, category}`
+      (Solo Monster/Monster Mob/Boss Monster room types) and `npc?:
+      {type}` (NPC room type), rolled right after the existing detail
+      roll. `DungeonSiteView.tsx` shows `Monster: <name> (<category>)` /
+      `NPC: <type>` in the room list. Browser-verified via Playwright: a
+      12-room dungeon populated 3 monster rooms and 1 NPC room correctly,
+      both label strings render in the DOM, zero console errors. New
+      `monsterTables.test.ts` + extended `generateDungeon.test.ts`
+      invariants (every monster-type room has `.monster`, every NPC room
+      has `.npc`, no other room type has either); all 174 Vitest tests
+      pass, `npx tsc -b`/`npm run build` clean.
+   c. **Real settlement maps — not started.** Voronoi districts, organic
       unioned/smoothed boundary, curved road network. Requires this
       project's first geometry-library dependency (Voronoi + polygon
       boolean/buffer/simplify, e.g. `d3-delaunay` + `turf.js`).
-   d. **Settlement NPC population** — reuses (b)'s Monster/NPC engine to
-      populate district POIs with named NPCs.
+   d. **Settlement NPC population — not started.** Reuses (b)'s Monster/NPC
+      engine to populate district POIs with named NPCs.
    Confirmed scope: dungeons + settlements only for now, not overland
-   random encounters. Full design sketches, file:line citations into
+   random encounters. Full design detail, file:line citations into
    `shadowdark-rest`, and open questions for each sub-phase are in
    `docs/plan-sites-settlements-mongo.md`.
 3. **Mongo backend + multi-campaign persistence — renumbered to phase 9,
@@ -150,14 +204,27 @@ src/
   engine/gridLayout.ts  generateGridLayout(count, rng): shared random-walk
                         grid-clustering algorithm — the digital equivalent of
                         the book's "drop dice on paper, trace an outline"
-                        step. Drives both dungeon rooms and settlement
-                        districts; cell adjacency alone is the visible shape.
+                        step. Drives settlement districts (dungeons moved to
+                        dungeonLayout.ts below); cell adjacency alone is the
+                        visible shape.
+  engine/dungeonLayout.ts   generateDungeonLayout(roomCount, rng): BSP-style
+                        floor-plan layout — recursively splits a bounding
+                        rectangle into exactly roomCount variable-sized leaf
+                        rectangles (always splits the largest-area
+                        splittable rect along its longer axis; MIN_ROOM_DIM
+                        enforced by construction). Connections are real
+                        geometric adjacency (shared boundary segment) between
+                        leaf rects, not a parent tree — a room can connect to
+                        more than one neighbor. Replaces gridLayout.ts for
+                        dungeons only (real dungeon/settlement maps phase a).
   engine/generateDungeon.ts   generateDungeonSite(rng, overrideSiteType?).
                         Site Type/Size are rolled fresh here, NEVER derived
                         from the originating hex's POI location text (the
                         book treats Shadowdark Maps as fully standalone).
                         Objective/boss room = highest Room Type roll, first
-                        occurrence wins ties.
+                        occurrence wins ties. Room.rect (from
+                        dungeonLayout.ts) + DungeonSite.connections
+                        (room-id pairs) drive the real floor-plan rendering.
   engine/generateSettlement.ts   generateSettlement(rng, overrideType?).
                         Same "fresh roll, not POI-derived" rule as dungeons.
                         District count = literal dice count (Village/Town
@@ -189,10 +256,20 @@ src/
                         (lazy useState initializer) and intentionally not
                         recomputed as the frontier grows, so revealing new hexes
                         doesn't yank the camera away from a panned/zoomed view.
-  hexgrid/GridLayoutSvg.tsx  Renders a generated dungeon/settlement's room/
-                        district grid as adjacent colored cells + corridor
-                        lines (parallel to HexGridSvg.tsx, no pan/zoom needed
-                        — grids max out at 12 rooms / 64 districts).
+  hexgrid/GridLayoutSvg.tsx  Renders a generated settlement's district grid
+                        as adjacent colored cells + corridor lines (parallel
+                        to HexGridSvg.tsx, no pan/zoom needed — grids max out
+                        at 64 districts). Dungeons moved to DungeonMapSvg.tsx
+                        below; this file is settlement-only until phase (c)
+                        of the real-maps work gives districts the same
+                        real-shape treatment.
+  hexgrid/DungeonMapSvg.tsx  Renders a generated dungeon's real BSP room
+                        layout: variable-sized pixel-space rectangles
+                        (src/engine/dungeonLayout.ts) + corridor lines
+                        between geometrically-adjacent rooms (a room can have
+                        more than one corridor, unlike GridLayoutSvg's
+                        single-parent-edge model). data-room-id Playwright
+                        convention preserved.
   state/mapReducer.ts   Hex/MapState types, MapAction union, pure reducer.
                         Party occupies one hex; MOVE_PARTY_TO only succeeds
                         into an adjacent hex (no map-size bound — reveals +
@@ -320,19 +397,25 @@ navigate-to-details action.
 
 ## Not done / possible next steps
 
-Phases 1-2 of the sites/settlements/encounters/Mongo plan, plus the
-arbitrary-size hex maps phase, are built and browser-verified (see Status
-above); nothing there is known-broken or half-finished. Agreed build order
-for what's left (see Status above and the plan file for design detail):
-1. **Real dungeon maps** (BSP room layout, replacing the grid-blob cells).
-2. **Dungeon monster/NPC population** (new Monster table + NPC generator).
-3. **Real settlement maps** (Voronoi districts, organic boundary, roads —
+Phases 1-2 of the sites/settlements/encounters/Mongo plan, the
+arbitrary-size hex maps phase, real dungeon maps (BSP room layout), and
+dungeon monster/NPC population (name/flavor only, from the user's B/X
+compilation — see Status above) are built and browser-verified; nothing
+there is known-broken or half-finished. Dungeon map rendering is still
+visually schematic (flat colored rectangles, corridors barely visible) —
+deferred on purpose, likely bundled with settlement rendering below.
+Agreed build order for what's left (see Status above and the plan file for
+design detail):
+1. **Real settlement maps** (Voronoi districts, organic boundary, roads —
    first geometry-library dependency).
-4. **Settlement NPC population** (reuses (2)'s Monster/NPC engine).
-5. **Node/Express + MongoDB backend for multi-campaign persistence.** The
+2. **Settlement NPC population** (reuses the dungeon phase's Monster/NPC
+   engine).
+3. **Node/Express + MongoDB backend for multi-campaign persistence.** The
    app still only saves one map to localStorage — no named/listable
-   campaigns, no server, no `.env`, nothing.
-6. **Neighbor-weighted terrain generation**, including making Ocean
+   campaigns, no server, no `.env`, nothing. Reuses a shared Atlas cluster
+   the user already has (new database, not the other project's) — see the
+   "Backend for MongoDB" section's "Reuse note" in the plan file.
+4. **Neighbor-weighted terrain generation**, including making Ocean
    generation form sensible contiguous bodies — design sketch (not final)
    now exists in the plan file, informed by reviewing `shadowdark-rest`'s
    own hex map generator.

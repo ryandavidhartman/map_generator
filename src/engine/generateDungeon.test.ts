@@ -3,8 +3,9 @@ import { generateDungeonSite } from './generateDungeon'
 
 // A scripted RNG: each call to Math.random() returns the next queued value.
 // rollDie(sides) computes floor(rng() * sides) + 1, so to force a specific die result `n`
-// (1-indexed) supply (n - 1) / sides. gridLayout.ts calls rng() directly (not via rollDie),
-// so a raw 0 always picks anchor index 0 and the first free neighbor.
+// (1-indexed) supply (n - 1) / sides. dungeonLayout.ts calls rng() directly (not via
+// rollDie) once per BSP split — a raw 0 always picks the minimum split position — and
+// consumes exactly `roomCount - 1` calls total (see dungeonLayout.ts).
 function scripted(values: number[]): () => number {
   let i = 0
   return () => {
@@ -31,7 +32,7 @@ describe('generateDungeonSite', () => {
       forDieResult(1, 6), // size d6 -> Small (5 rooms)
       forDieResult(3, 6), // type d6 -> Tomb
       forDieResult(6, 6), // danger d6 -> Deadly
-      0, 0, 0, 0, 0, 0, 0, 0, // grid layout: 4 additional rooms x 2 rng calls each
+      0, 0, 0, 0, // BSP layout: 5 rooms needs 4 splits, 1 rng call each
       forDieResult(1, 10), // room 0 -> Empty
       forDieResult(1, 10), // room 1 -> Empty
       forDieResult(1, 10), // room 2 -> Empty
@@ -54,18 +55,22 @@ describe('generateDungeonSite', () => {
       forDieResult(1, 6), // size -> Small (5 rooms)
       forDieResult(1, 6), // type -> Cave
       forDieResult(1, 6), // danger -> Unsafe
-      0, 0, 0, 0, 0, 0, 0, 0, // grid layout
+      0, 0, 0, 0, // BSP layout: 4 splits
       forDieResult(1, 10), // room 0 -> Empty
       forDieResult(10, 10), // room 1 -> Boss Monster (tied max)
       forDieResult(1, 6), // room 1 detail
+      0, // room 1 monster roll
       forDieResult(1, 10), // room 2 -> Empty
       forDieResult(10, 10), // room 3 -> Boss Monster (tied max, later index)
       forDieResult(1, 6), // room 3 detail
+      0, // room 3 monster roll
       forDieResult(1, 10), // room 4 -> Empty
     ])
     const site = generateDungeonSite(rng)
     expect(site.rooms.filter((r) => r.isObjectiveRoom)).toHaveLength(1)
     expect(site.rooms[1].isObjectiveRoom).toBe(true)
+    expect(site.rooms[1].monster).toBeDefined()
+    expect(site.rooms[3].monster).toBeDefined()
     expect(site.rooms[3].isObjectiveRoom).toBe(false)
   })
 
@@ -74,7 +79,7 @@ describe('generateDungeonSite', () => {
       forDieResult(1, 6), // size -> Small
       // no type roll consumed — overridden
       forDieResult(1, 6), // danger -> Unsafe
-      0, 0, 0, 0, 0, 0, 0, 0, // grid layout
+      0, 0, 0, 0, // BSP layout: 4 splits
       forDieResult(1, 10),
       forDieResult(1, 10),
       forDieResult(1, 10),
@@ -97,8 +102,29 @@ describe('generateDungeonSite', () => {
       const maxRoll = Math.max(...site.rooms.map((r) => r.roomTypeRoll))
       expect(objectiveRooms[0].roomTypeRoll).toBe(maxRoll)
 
-      const cellKeys = site.rooms.map((r) => `${r.cell.row},${r.cell.col}`)
-      expect(new Set(cellKeys).size).toBe(site.rooms.length)
+      for (const room of site.rooms) {
+        expect(room.rect.width).toBeGreaterThan(0)
+        expect(room.rect.height).toBeGreaterThan(0)
+      }
+
+      const roomIds = new Set(site.rooms.map((r) => r.id))
+      for (const [a, b] of site.connections) {
+        expect(roomIds.has(a)).toBe(true)
+        expect(roomIds.has(b)).toBe(true)
+      }
+
+      for (const room of site.rooms) {
+        const isMonsterType = room.roomType === 'Solo Monster' || room.roomType === 'Monster Mob' || room.roomType === 'Boss Monster'
+        expect(Boolean(room.monster)).toBe(isMonsterType)
+        expect(Boolean(room.npc)).toBe(room.roomType === 'NPC')
+        if (room.monster) {
+          expect(room.monster.name.length).toBeGreaterThan(0)
+          expect(room.monster.category.length).toBeGreaterThan(0)
+        }
+        if (room.npc) {
+          expect(room.npc.type.length).toBeGreaterThan(0)
+        }
+      }
     }
   })
 })

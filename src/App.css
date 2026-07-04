@@ -250,6 +250,11 @@ button.primary:hover {
   border-color: #d4af37;
 }
 
+.room-tag {
+  color: #9ca3af;
+  font-size: 0.85em;
+}
+
 .district-toggle {
   width: 100%;
   text-align: left;

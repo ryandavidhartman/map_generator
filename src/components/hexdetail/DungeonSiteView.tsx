@@ -1,17 +1,16 @@
 import { useMapDispatch } from '../../state/MapContext'
 import type { Hex } from '../../state/mapReducer'
 import type { DungeonSite } from '../../engine/generateDungeon'
-import { GridLayoutSvg, type GridLayoutCellData } from '../../hexgrid/GridLayoutSvg'
+import { DungeonMapSvg, type DungeonMapRoomData } from '../../hexgrid/DungeonMapSvg'
 import { ROOM_TYPE_COLORS } from '../../data/siteColors'
 import { HexBaseInfo } from './HexBaseInfo'
 
 export function DungeonSiteView({ hex, site }: { hex: Hex; site: DungeonSite }) {
   const dispatch = useMapDispatch()
 
-  const cells: GridLayoutCellData[] = site.rooms.map((room) => ({
+  const rooms: DungeonMapRoomData[] = site.rooms.map((room) => ({
     id: room.id,
-    cell: room.cell,
-    parentId: room.parentRoomId,
+    rect: room.rect,
     color: ROOM_TYPE_COLORS[room.roomType],
     label: room.isObjectiveRoom ? '★' : String(room.index + 1),
     highlighted: room.isObjectiveRoom,
@@ -32,7 +31,7 @@ export function DungeonSiteView({ hex, site }: { hex: Hex; site: DungeonSite }) 
         </div>
 
         <div className="site-layout">
-          <GridLayoutSvg cells={cells} cellIdAttribute="room-id" />
+          <DungeonMapSvg rooms={rooms} connections={site.connections} />
         </div>
 
         <ol className="room-list">
@@ -43,6 +42,12 @@ export function DungeonSiteView({ hex, site }: { hex: Hex; site: DungeonSite }) 
                 {room.isObjectiveRoom && ' (Objective)'}
               </strong>
               {room.detail && <p>{room.detail}</p>}
+              {room.monster && (
+                <p>
+                  Monster: {room.monster.name} <span className="room-tag">({room.monster.category})</span>
+                </p>
+              )}
+              {room.npc && <p>NPC: {room.npc.type}</p>}
             </li>
           ))}
         </ol>
