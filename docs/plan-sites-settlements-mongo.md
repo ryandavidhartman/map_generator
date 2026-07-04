@@ -114,7 +114,7 @@ Separate `server/package.json` (not folded into root) keeps `express`/`mongodb` 
 
 Routes:
 ```
-GET    /api/campaigns          -> CampaignSummary[] (id, name, timestamps, radius, hexCount — no nested hexes)
+GET    /api/campaigns          -> CampaignSummary[] (id, name, timestamps, hexCount — no nested hexes; no `radius`, dropped in the arbitrary-size-maps phase)
 GET    /api/campaigns/:id       -> Campaign (full nested map) | 404
 POST   /api/campaigns           body:{name, map}       -> 201 Campaign  (save-as-new)
 PUT    /api/campaigns/:id       body:{name?, map}       -> 200 Campaign  (save existing, bumps updatedAt)
@@ -141,7 +141,7 @@ Real-browser Playwright verification required (per this project's documented his
 1. ✅ **Data + engine + unit tests, no UI.** All new `data/`/`engine/` files above, full Vitest coverage. Zero risk to the currently-working app; `npm run test` / `npx tsc -b` green is the stopping point. — Done.
 2. ✅ **Hex full-view UI + navigation, local generation only, no Mongo.** Router, new routes/components, reducer changes, retire `HexDetailsPanel`. Playwright pass. Stopping point: fully playable single-campaign app, generation works, persistence still localStorage-only. — Done.
 3. ✅ **Random encounters wiring** — mostly delivered by phase 2's `EncounterRoller`; this phase adds the settlement-district-level rolling + Tavern/Shop generator buttons. — Substantially done as part of phase 2.
-4. **Arbitrary-size hex maps** — inserted here, before Mongo, specifically so the persisted campaign schema never has to carry (and later migrate away) a `radius` field. See "Arbitrary-size hex maps" section below for the design. Not started.
+4. ✅ **Arbitrary-size hex maps** — inserted here, before Mongo, specifically so the persisted campaign schema never has to carry (and later migrate away) a `radius` field. See "Arbitrary-size hex maps" section below for the design. — Done: `radius` removed from `MapState`/`START_MAP`/`StartMapDialog`; `hexMath.ts`'s `computeVisibleCoords` replaces `hexesInRadius`/`isWithinRadius` (both deleted as dead code); `isRevealableNow`/`MOVE_PARTY_TO` now only check party-adjacency. Browser-verified via Playwright (walked 4 hexes out with no refusal, confirmed frontier de-duplication, no `radius` key persisted, zero console errors) plus unit tests in `hexMath.test.ts`/`mapReducer.test.ts`.
 5. **Mongo backend + multi-campaign persistence** (renumbered from the original phase 4) — the most novel/riskiest territory, independently verifiable once phases 1-4 already work. `server/` scaffold, routes, dev tooling, `api.ts`, `CampaignListPage`, async `MapProvider`, Save button + autosave, one-time "import current local map as a new campaign" action for the existing single localStorage slot. Not started.
 6. **Neighbor-weighted terrain generation (incl. making Ocean generation coherent)** — sequenced last since it's a pure `engine/generateHex.ts` change with zero schema/storage implications either way; no reason to block anything else on it. See "Neighbor-weighted terrain generation" section below. Not started, design not yet fully specified.
 

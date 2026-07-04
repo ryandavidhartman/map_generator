@@ -8,7 +8,7 @@ import {
 } from '../engine/generateHex'
 import { generateSiteForHex, type GeneratedSite } from '../engine/generateSite'
 import type { DangerLevel, Terrain } from '../data/tables'
-import { hexId, isWithinRadius, neighborsOf, parseHexId } from '../hexgrid/hexMath'
+import { hexId, neighborsOf, parseHexId } from '../hexgrid/hexMath'
 
 export type Hex = {
   id: string
@@ -21,14 +21,12 @@ export type Hex = {
 }
 
 export type MapState = {
-  radius: number
   hexes: Record<string, Hex>
   partyHexId: string | null
   selectedHexId: string | null
 }
 
 export const EMPTY_MAP_STATE: MapState = {
-  radius: 0,
   hexes: {},
   partyHexId: null,
   selectedHexId: null,
@@ -37,7 +35,7 @@ export const EMPTY_MAP_STATE: MapState = {
 export type HexEditPatch = Partial<Pick<Hex, 'terrain' | 'danger' | 'poi'>>
 
 export type MapAction =
-  | { type: 'START_MAP'; terrain: Terrain; radius: number; rng?: Rng }
+  | { type: 'START_MAP'; terrain: Terrain; rng?: Rng }
   | { type: 'MOVE_PARTY_TO'; hexId: string; rng?: Rng }
   | { type: 'SELECT_HEX'; hexId: string }
   | { type: 'REROLL_HEX'; hexId: string; rng?: Rng }
@@ -59,8 +57,7 @@ export function isAdjacentToParty(state: MapState, id: string): boolean {
 // Whether clicking this (unrevealed) hex right now would generate it.
 export function isRevealableNow(state: MapState, id: string): boolean {
   if (isRevealed(state, id)) return false
-  if (!isAdjacentToParty(state, id)) return false
-  return isWithinRadius(parseHexId(id), state.radius)
+  return isAdjacentToParty(state, id)
 }
 
 export function mapReducer(state: MapState, action: MapAction): MapState {
@@ -71,7 +68,6 @@ export function mapReducer(state: MapState, action: MapAction): MapState {
       const details = generateStartingHexDetails(action.terrain, action.rng)
       const startHex: Hex = { id, q: origin.q, r: origin.r, ...details }
       return {
-        radius: action.radius,
         hexes: { [id]: startHex },
         partyHexId: id,
         selectedHexId: id,
@@ -87,7 +83,6 @@ export function mapReducer(state: MapState, action: MapAction): MapState {
       }
 
       const coord = parseHexId(action.hexId)
-      if (!isWithinRadius(coord, state.radius)) return state
       if (!state.partyHexId) return state
 
       const currentTerrain = state.hexes[state.partyHexId].terrain

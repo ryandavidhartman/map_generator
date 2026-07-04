@@ -2,15 +2,14 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMapDispatch, useMapState } from '../state/MapContext'
 import { isRevealableNow } from '../state/mapReducer'
-import { axialToPixel, hexesInRadius, hexId } from './hexMath'
+import { axialToPixel, computeVisibleCoords, hexId, type AxialCoord } from './hexMath'
 import { HexTile } from './HexTile'
 
 const HEX_SIZE = 40
 
 type ViewBox = { x: number; y: number; w: number; h: number }
 
-function computeFitViewBox(radius: number, size: number): ViewBox {
-  const coords = hexesInRadius(radius)
+function computeFitViewBox(coords: AxialCoord[], size: number): ViewBox {
   const points = coords.map((c) => axialToPixel(c, size))
   const pad = size * 1.4
   const xs = points.map((p) => p.x)
@@ -28,14 +27,15 @@ export function HexGridSvg() {
   const navigate = useNavigate()
   const svgRef = useRef<SVGSVGElement>(null)
   const dragOrigin = useRef<{ x: number; y: number } | null>(null)
-  const fitViewBox = useMemo(() => computeFitViewBox(state.radius, HEX_SIZE), [state.radius])
+  const coords = useMemo(
+    () => computeVisibleCoords(Object.values(state.hexes).map((hex) => ({ q: hex.q, r: hex.r }))),
+    [state.hexes],
+  )
+  // Computed once per mount (lazy initializer), not on every reveal — the map is
+  // unbounded now, so refitting every time the frontier grows would keep yanking
+  // the view out from under a GM who has panned/zoomed to a spot of interest.
+  const [fitViewBox] = useState<ViewBox>(() => computeFitViewBox(coords, HEX_SIZE))
   const [viewBox, setViewBox] = useState<ViewBox>(fitViewBox)
-
-  useEffect(() => {
-    setViewBox(fitViewBox)
-  }, [fitViewBox])
-
-  const coords = useMemo(() => hexesInRadius(state.radius), [state.radius])
 
   function handlePointerDown(e: PointerEvent<SVGSVGElement>) {
     dragOrigin.current = { x: e.clientX, y: e.clientY }
@@ -116,7 +116,7 @@ export function HexGridSvg() {
             isSelected={state.selectedHexId === id}
             isRevealable={isRevealableNow(state, id)}
             onSingleClick={() => {
-              // MOVE_PARTY_TO itself guards on adjacency/radius, and handles both an
+              // MOVE_PARTY_TO itself guards on adjacency, and handles both an
               // already-revealed hex (just relocate) and an unrevealed one (reveal + move),
               // so a single click can always just dispatch it unconditionally.
               dispatch({ type: 'MOVE_PARTY_TO', hexId: id })

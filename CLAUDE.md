@@ -33,14 +33,30 @@ from double-click (open full-view details) — see HexTile.tsx below.
 
 **Before Mongo persistence, two more requirements were added and sequenced
 in front of it** (plan updated accordingly):
-1. **Arbitrary-size hex maps — next up, not started.** Today's map is
-   bounded to a fixed `radius` chosen at `START_MAP` time, and rendering
-   enumerates the *entire* radius disk every frame. This needs to become
-   frontier-based (render only revealed hexes + their unrevealed
-   neighbors) so the map can grow unbounded. Sequenced before Mongo
-   specifically so the campaign schema never carries a `radius` field that
-   would later need migrating away.
-2. **Mongo backend + multi-campaign persistence — not started.**
+1. ✅ **Arbitrary-size hex maps — done.** The map no longer has a `radius`;
+   `MapState`/`START_MAP` dropped the field entirely. Rendering is now
+   frontier-based: `hexMath.ts`'s `computeVisibleCoords(revealedCoords)`
+   returns every revealed hex plus every unrevealed hex adjacent to at
+   least one revealed hex (de-duplicated), replacing the old
+   `hexesInRadius(radius)` full-disk enumeration (`isWithinRadius` and
+   `hexesInRadius` were removed as dead code). `isRevealableNow` and
+   `MOVE_PARTY_TO` now only check party-adjacency — a hex arbitrarily far
+   from the origin is reachable by walking there one adjacent step at a
+   time (see the regression test in `mapReducer.test.ts`).
+   `HexGridSvg.tsx`'s initial view-fit (`fitViewBox`) is deliberately
+   computed once via a lazy `useState` initializer at mount, **not**
+   recomputed every time the frontier grows — recomputing per-reveal would
+   yank the view back to a full-map fit every time a new hex is revealed,
+   fighting a GM who has panned/zoomed to a spot of interest. `coords` (the
+   list actually rendered) is still a reactive `useMemo` on `state.hexes`,
+   so newly revealed/frontier hexes do appear immediately — only the
+   camera fit is frozen at mount. `StartMapDialog` no longer has a "Map
+   radius" input; a new map always starts at `(0,0)`. Browser-verified via
+   Playwright: walked the party 4 hexes out along one axis with no radius
+   refusal, confirmed no `radius` key in the persisted localStorage state,
+   confirmed frontier de-duplication (2 revealed hexes sharing neighbors
+   render as 10 tiles total, not 12), zero console errors.
+2. **Mongo backend + multi-campaign persistence — next up, not started.**
 3. **Neighbor-weighted terrain generation — not started, sequenced last.**
    New-hex terrain should be influenced by all already-revealed neighbors,
    not just the single predecessor hex the book's RAW stepping table uses.
@@ -123,22 +139,29 @@ src/
                         to generateSettlement vs generateDungeonSite based on
                         SETTLEMENT_LOCATIONS.includes(poi.location).
   hexgrid/hexMath.ts    Axial coords, flat-top layout, neighbors, distance,
-                        radius bounding, pixel conversion, SVG polygon corners.
+                        computeVisibleCoords (frontier-based fog-of-war: revealed
+                        hexes + their unrevealed neighbors, no map-size bound),
+                        pixel conversion, SVG polygon corners.
   hexgrid/colors.ts     Shared terrain/danger color maps (HexTile + Legend).
   hexgrid/HexTile.tsx   One hex: fill=terrain, stroke=danger, POI/party
                         markers. Single click moves the party (debounced
                         250ms so it can be cancelled by a second click);
                         double click opens the hex's full-view details page.
   hexgrid/HexGridSvg.tsx SVG canvas, hand-rolled drag-to-pan + wheel-to-zoom
-                        (viewBox manipulation, no pan/zoom library).
+                        (viewBox manipulation, no pan/zoom library). Renders
+                        computeVisibleCoords(revealed) — unbounded map, no fixed
+                        radius disk. Initial view-fit is computed once at mount
+                        (lazy useState initializer) and intentionally not
+                        recomputed as the frontier grows, so revealing new hexes
+                        doesn't yank the camera away from a panned/zoomed view.
   hexgrid/GridLayoutSvg.tsx  Renders a generated dungeon/settlement's room/
                         district grid as adjacent colored cells + corridor
                         lines (parallel to HexGridSvg.tsx, no pan/zoom needed
                         — grids max out at 12 rooms / 64 districts).
   state/mapReducer.ts   Hex/MapState types, MapAction union, pure reducer.
                         Party occupies one hex; MOVE_PARTY_TO only succeeds
-                        into an adjacent hex within radius (reveals + rolls
-                        if new, else just relocates if already revealed).
+                        into an adjacent hex (no map-size bound — reveals +
+                        rolls if new, else just relocates if already revealed).
                         Hex.site (GeneratedSite, settlement|dungeon) is set
                         by GENERATE_SITE (idempotent) / REROLL_SITE
                         (unconditional); REROLL_HEX and EDIT_HEX (when the
@@ -262,18 +285,14 @@ navigate-to-details action.
 
 ## Not done / possible next steps
 
-Phases 1-2 of the sites/settlements/encounters/Mongo plan are built and
-browser-verified (see Status above); nothing there is known-broken or
-half-finished. Agreed build order for what's left (see Status above and
-the plan file for design detail):
-1. **Arbitrary-size hex maps** — frontier-based rendering instead of a
-   fixed `radius` disk; drop `radius` from `MapState`/`START_MAP`/
-   `StartMapDialog`; `isRevealableNow`/`MOVE_PARTY_TO` keep only the
-   party-adjacency check, not a radius bound.
-2. **Node/Express + MongoDB backend for multi-campaign persistence.** The
+Phases 1-2 of the sites/settlements/encounters/Mongo plan, plus the
+arbitrary-size hex maps phase, are built and browser-verified (see Status
+above); nothing there is known-broken or half-finished. Agreed build order
+for what's left (see Status above and the plan file for design detail):
+1. **Node/Express + MongoDB backend for multi-campaign persistence.** The
    app still only saves one map to localStorage — no named/listable
    campaigns, no server, no `.env`, nothing.
-3. **Neighbor-weighted terrain generation**, including making Ocean
+2. **Neighbor-weighted terrain generation**, including making Ocean
    generation form sensible contiguous bodies — design not yet fully
    specified, see the plan file's placeholder section for candidate
    approaches.

@@ -10,10 +10,8 @@ describe('mapReducer', () => {
     const state = mapReducer(EMPTY_MAP_STATE, {
       type: 'START_MAP',
       terrain: 'Grassland',
-      radius: 3,
       rng: fixedRng(0.99), // high roll: danger Deadly, poi check fails (d6=6)
     })
-    expect(state.radius).toBe(3)
     expect(state.partyHexId).toBe('0,0')
     expect(state.selectedHexId).toBe('0,0')
     expect(state.hexes['0,0']).toMatchObject({ id: '0,0', q: 0, r: 0, terrain: 'Grassland' })
@@ -23,7 +21,6 @@ describe('mapReducer', () => {
     let state: MapState = mapReducer(EMPTY_MAP_STATE, {
       type: 'START_MAP',
       terrain: 'Grassland',
-      radius: 3,
       rng: fixedRng(0.99),
     })
     state = mapReducer(state, { type: 'MOVE_PARTY_TO', hexId: '1,0', rng: fixedRng(0.99) })
@@ -36,7 +33,6 @@ describe('mapReducer', () => {
     let state: MapState = mapReducer(EMPTY_MAP_STATE, {
       type: 'START_MAP',
       terrain: 'Grassland',
-      radius: 3,
       rng: fixedRng(0.99),
     })
     const before = state
@@ -44,23 +40,26 @@ describe('mapReducer', () => {
     expect(state).toBe(before)
   })
 
-  it('MOVE_PARTY_TO refuses a hex beyond the map radius', () => {
+  it('MOVE_PARTY_TO can reach a hex arbitrarily far away by walking there one adjacent step at a time', () => {
     let state: MapState = mapReducer(EMPTY_MAP_STATE, {
       type: 'START_MAP',
       terrain: 'Grassland',
-      radius: 0,
       rng: fixedRng(0.99),
     })
-    const before = state
-    state = mapReducer(state, { type: 'MOVE_PARTY_TO', hexId: '1,0', rng: fixedRng(0.99) })
-    expect(state).toBe(before)
+    // Walk 50 hexes straight out along the q axis — there is no map-size bound anymore.
+    const steps = 50
+    for (let q = 1; q <= steps; q++) {
+      state = mapReducer(state, { type: 'MOVE_PARTY_TO', hexId: `${q},0`, rng: fixedRng(0.99) })
+    }
+    expect(state.partyHexId).toBe(`${steps},0`)
+    expect(state.hexes[`${steps},0`]).toBeDefined()
+    expect(Object.keys(state.hexes)).toHaveLength(steps + 1)
   })
 
   it('REROLL_HEX keeps terrain but changes danger/poi', () => {
     let state: MapState = mapReducer(EMPTY_MAP_STATE, {
       type: 'START_MAP',
       terrain: 'Grassland',
-      radius: 3,
       rng: fixedRng(0.99),
     })
     state = mapReducer(state, { type: 'REROLL_HEX', hexId: '0,0', rng: fixedRng(0) })
@@ -72,7 +71,6 @@ describe('mapReducer', () => {
     let state: MapState = mapReducer(EMPTY_MAP_STATE, {
       type: 'START_MAP',
       terrain: 'Grassland',
-      radius: 3,
       rng: fixedRng(0.99),
     })
     state = mapReducer(state, { type: 'EDIT_HEX', hexId: '0,0', patch: { terrain: 'Mountain' } })
@@ -83,7 +81,6 @@ describe('mapReducer', () => {
     let state: MapState = mapReducer(EMPTY_MAP_STATE, {
       type: 'START_MAP',
       terrain: 'Grassland',
-      radius: 3,
       rng: fixedRng(0.99),
     })
     state = mapReducer(state, { type: 'NEW_MAP' })
@@ -94,7 +91,6 @@ describe('mapReducer', () => {
     let state: MapState = mapReducer(EMPTY_MAP_STATE, {
       type: 'START_MAP',
       terrain: 'Grassland',
-      radius: 3,
       rng: fixedRng(0), // poi check passes, rolls "Small tower" (non-settlement POI)
     })
     expect(state.hexes['0,0'].poi?.location).toBe('Small tower')
@@ -108,7 +104,6 @@ describe('mapReducer', () => {
     let state: MapState = mapReducer(EMPTY_MAP_STATE, {
       type: 'START_MAP',
       terrain: 'Grassland',
-      radius: 3,
       rng: fixedRng(0.99), // poi check fails
     })
     const before = state
@@ -120,7 +115,6 @@ describe('mapReducer', () => {
     let state: MapState = mapReducer(EMPTY_MAP_STATE, {
       type: 'START_MAP',
       terrain: 'Grassland',
-      radius: 3,
       rng: fixedRng(0),
     })
     state = mapReducer(state, { type: 'GENERATE_SITE', hexId: '0,0', rng: fixedRng(0) })
@@ -133,7 +127,6 @@ describe('mapReducer', () => {
     let state: MapState = mapReducer(EMPTY_MAP_STATE, {
       type: 'START_MAP',
       terrain: 'Grassland',
-      radius: 3,
       rng: fixedRng(0),
     })
     state = mapReducer(state, { type: 'GENERATE_SITE', hexId: '0,0', rng: fixedRng(0) })
@@ -146,7 +139,6 @@ describe('mapReducer', () => {
     let state: MapState = mapReducer(EMPTY_MAP_STATE, {
       type: 'START_MAP',
       terrain: 'Grassland',
-      radius: 3,
       rng: fixedRng(0),
     })
     state = mapReducer(state, { type: 'GENERATE_SITE', hexId: '0,0', rng: fixedRng(0) })
@@ -160,7 +152,6 @@ describe('mapReducer', () => {
     let state: MapState = mapReducer(EMPTY_MAP_STATE, {
       type: 'START_MAP',
       terrain: 'Grassland',
-      radius: 3,
       rng: fixedRng(0),
     })
     state = mapReducer(state, { type: 'GENERATE_SITE', hexId: '0,0', rng: fixedRng(0) })
@@ -179,14 +170,13 @@ describe('mapReducer', () => {
     expect(state.hexes['0,0'].site).toBeUndefined()
   })
 
-  it('isRevealableNow is true only for unrevealed, adjacent, in-radius hexes', () => {
+  it('isRevealableNow is true only for unrevealed, adjacent hexes', () => {
     const state = mapReducer(EMPTY_MAP_STATE, {
       type: 'START_MAP',
       terrain: 'Grassland',
-      radius: 1,
       rng: fixedRng(0.99),
     })
-    expect(isRevealableNow(state, '1,0')).toBe(true) // adjacent, in radius
+    expect(isRevealableNow(state, '1,0')).toBe(true) // adjacent
     expect(isRevealableNow(state, '2,0')).toBe(false) // not adjacent
     expect(isRevealableNow(state, '0,0')).toBe(false) // already revealed
   })

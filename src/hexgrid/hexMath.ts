@@ -34,10 +34,6 @@ export function axialDistance(a: AxialCoord, b: AxialCoord): number {
   return (Math.abs(a.q - b.q) + Math.abs(a.q + a.r - b.q - b.r) + Math.abs(a.r - b.r)) / 2
 }
 
-export function isWithinRadius(coord: AxialCoord, radius: number, center: AxialCoord = { q: 0, r: 0 }): boolean {
-  return axialDistance(center, coord) <= radius
-}
-
 export type PixelPoint = { x: number; y: number }
 
 // size = distance from hex center to a corner.
@@ -66,16 +62,20 @@ export function hexCornersPointsAttr(center: PixelPoint, size: number): string {
     .join(' ')
 }
 
-// All axial coords within `radius` of the given center, sorted by distance
-// then angle (stable order for radius-bounded map rendering/iteration).
-export function hexesInRadius(radius: number, center: AxialCoord = { q: 0, r: 0 }): AxialCoord[] {
-  const results: AxialCoord[] = []
-  for (let q = -radius; q <= radius; q++) {
-    const rMin = Math.max(-radius, -q - radius)
-    const rMax = Math.min(radius, -q + radius)
-    for (let r = rMin; r <= rMax; r++) {
-      results.push({ q: center.q + q, r: center.r + r })
+// Fog-of-war visibility for an unbounded map: every revealed hex, plus every
+// unrevealed hex adjacent to at least one revealed hex (the "frontier").
+// Replaces the old fixed-radius-disk enumeration so rendering scales with the
+// explored area instead of a hypothetical max map size.
+export function computeVisibleCoords(revealedCoords: AxialCoord[]): AxialCoord[] {
+  const revealedIds = new Set(revealedCoords.map(hexId))
+  const frontier = new Map<string, AxialCoord>()
+  for (const coord of revealedCoords) {
+    for (const neighbor of neighborsOf(coord)) {
+      const id = hexId(neighbor)
+      if (!revealedIds.has(id) && !frontier.has(id)) {
+        frontier.set(id, neighbor)
+      }
     }
   }
-  return results
+  return [...revealedCoords, ...frontier.values()]
 }

@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   axialDistance,
+  computeVisibleCoords,
   hexId,
   parseHexId,
-  hexesInRadius,
-  isWithinRadius,
   neighborsOf,
 } from './hexMath'
 
@@ -40,29 +39,47 @@ describe('axialDistance', () => {
   })
 })
 
-describe('isWithinRadius', () => {
-  it('includes the center and hexes at exactly the radius', () => {
-    expect(isWithinRadius({ q: 0, r: 0 }, 2)).toBe(true)
-    expect(isWithinRadius({ q: 2, r: 0 }, 2)).toBe(true)
-  })
-
-  it('excludes hexes beyond the radius', () => {
-    expect(isWithinRadius({ q: 3, r: 0 }, 2)).toBe(false)
-  })
-})
-
-describe('hexesInRadius', () => {
-  it('produces the correct count for a given radius (3r^2 + 3r + 1)', () => {
-    for (const radius of [0, 1, 2, 3, 6]) {
-      const expected = 3 * radius * radius + 3 * radius + 1
-      expect(hexesInRadius(radius)).toHaveLength(expected)
+describe('computeVisibleCoords', () => {
+  it('returns just the center plus its 6 neighbors for a single revealed hex', () => {
+    const coords = computeVisibleCoords([{ q: 0, r: 0 }])
+    expect(coords).toHaveLength(7)
+    expect(coords).toContainEqual({ q: 0, r: 0 })
+    for (const n of neighborsOf({ q: 0, r: 0 })) {
+      expect(coords).toContainEqual(n)
     }
   })
 
-  it('every produced hex is within the radius', () => {
-    const radius = 4
-    for (const coord of hexesInRadius(radius)) {
-      expect(isWithinRadius(coord, radius)).toBe(true)
+  it('does not duplicate a frontier hex shared by two revealed hexes', () => {
+    const coords = computeVisibleCoords([
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+    ])
+    const ids = coords.map(hexId)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('never re-lists an already-revealed coord as frontier', () => {
+    const revealed = [
+      { q: 0, r: 0 },
+      { q: 1, r: 0 },
+      { q: 1, r: -1 },
+    ]
+    const coords = computeVisibleCoords(revealed)
+    const revealedIds = new Set(revealed.map(hexId))
+    const seen = new Set<string>()
+    for (const c of coords) {
+      const id = hexId(c)
+      expect(seen.has(id)).toBe(false)
+      seen.add(id)
     }
+    // every revealed coord is present exactly once
+    for (const r of revealed) {
+      expect(seen.has(hexId(r))).toBe(true)
+    }
+    expect(revealedIds.size).toBe(revealed.length)
+  })
+
+  it('returns an empty array for no revealed hexes', () => {
+    expect(computeVisibleCoords([])).toEqual([])
   })
 })
