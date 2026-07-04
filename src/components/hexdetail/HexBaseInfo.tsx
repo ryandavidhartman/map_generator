@@ -1,38 +1,29 @@
 import { useState } from 'react'
-import { useMapDispatch, useMapState } from '../state/MapContext'
-import { isAdjacentToParty, type Hex } from '../state/mapReducer'
-import { TERRAIN_ORDER, type DangerLevel, type Terrain } from '../data/tables'
+import { useMapDispatch, useMapState } from '../../state/MapContext'
+import { isAdjacentToParty, type Hex } from '../../state/mapReducer'
+import { TERRAIN_ORDER, type DangerLevel, type Terrain } from '../../data/tables'
+import { TERRAIN_TO_ENCOUNTER_KEYS } from '../../data/encounterTables'
+import { EncounterRoller } from '../EncounterRoller'
 
 const DANGER_LEVELS: DangerLevel[] = ['Safe', 'Unsafe', 'Risky', 'Deadly']
 
-export function HexDetailsPanel() {
+// Shared by every hex full-view variant (wilderness/dungeon/settlement): id/terrain/danger/poi
+// display, move/reroll/edit actions (ported from the now-retired HexDetailsPanel sidebar), and
+// the standalone random-encounter roller.
+export function HexBaseInfo({ hex }: { hex: Hex }) {
   const state = useMapState()
   const dispatch = useMapDispatch()
   const [editing, setEditing] = useState(false)
-
-  const hex = state.selectedHexId ? state.hexes[state.selectedHexId] : undefined
-
-  if (!hex) {
-    return (
-      <aside className="hex-details-panel">
-        <p>Select a hex to see its details.</p>
-      </aside>
-    )
-  }
 
   const isParty = state.partyHexId === hex.id
   const canMoveHere = !isParty && isAdjacentToParty(state, hex.id)
 
   if (editing) {
-    return (
-      <aside className="hex-details-panel">
-        <HexEditForm hex={hex} onDone={() => setEditing(false)} />
-      </aside>
-    )
+    return <HexEditForm hex={hex} onDone={() => setEditing(false)} />
   }
 
   return (
-    <aside className="hex-details-panel">
+    <div className="hex-base-info">
       <h2>
         Hex {hex.id} {isParty && <span title="Party is here">🧭</span>}
       </h2>
@@ -76,7 +67,9 @@ export function HexDetailsPanel() {
           Edit
         </button>
       </div>
-    </aside>
+
+      <EncounterRoller tableKeys={TERRAIN_TO_ENCOUNTER_KEYS[hex.terrain]} />
+    </div>
   )
 }
 

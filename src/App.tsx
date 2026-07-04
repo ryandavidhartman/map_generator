@@ -1,12 +1,13 @@
 import './App.css'
+import { Routes, Route } from 'react-router-dom'
 import { HexGridSvg } from './hexgrid/HexGridSvg'
 import { StartMapDialog } from './components/StartMapDialog'
-import { HexDetailsPanel } from './components/HexDetailsPanel'
 import { Toolbar } from './components/Toolbar'
 import { Legend } from './components/Legend'
+import { HexDetailPage } from './routes/HexDetailPage'
 import { MapProvider, useMapState } from './state/MapContext'
 
-function AppContent() {
+function OverlandMapScreen() {
   const state = useMapState()
 
   if (!state.partyHexId) {
@@ -28,7 +29,6 @@ function AppContent() {
           <HexGridSvg />
           <Legend />
         </div>
-        <HexDetailsPanel />
       </div>
     </>
   )
@@ -37,7 +37,10 @@ function AppContent() {
 function App() {
   return (
     <MapProvider>
-      <AppContent />
+      <Routes>
+        <Route path="/" element={<OverlandMapScreen />} />
+        <Route path="/hex/:hexId" element={<HexDetailPage />} />
+      </Routes>
     </MapProvider>
   )
 }

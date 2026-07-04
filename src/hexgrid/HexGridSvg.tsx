@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useMapDispatch, useMapState } from '../state/MapContext'
 import { isRevealableNow } from '../state/mapReducer'
 import { axialToPixel, hexesInRadius, hexId } from './hexMath'
@@ -24,6 +25,7 @@ function computeFitViewBox(radius: number, size: number): ViewBox {
 export function HexGridSvg() {
   const state = useMapState()
   const dispatch = useMapDispatch()
+  const navigate = useNavigate()
   const svgRef = useRef<SVGSVGElement>(null)
   const dragOrigin = useRef<{ x: number; y: number } | null>(null)
   const fitViewBox = useMemo(() => computeFitViewBox(state.radius, HEX_SIZE), [state.radius])
@@ -113,9 +115,18 @@ export function HexGridSvg() {
             isParty={state.partyHexId === id}
             isSelected={state.selectedHexId === id}
             isRevealable={isRevealableNow(state, id)}
-            onClick={() => {
+            onSingleClick={() => {
+              // MOVE_PARTY_TO itself guards on adjacency/radius, and handles both an
+              // already-revealed hex (just relocate) and an unrevealed one (reveal + move),
+              // so a single click can always just dispatch it unconditionally.
+              dispatch({ type: 'MOVE_PARTY_TO', hexId: id })
+            }}
+            onDoubleClick={() => {
               if (hex) {
+                // Revealed hex: navigate to its full view (SELECT_HEX also fires so the
+                // grid keeps highlighting whichever hex is currently being viewed).
                 dispatch({ type: 'SELECT_HEX', hexId: id })
+                navigate(`/hex/${id}`)
               } else if (isRevealableNow(state, id)) {
                 dispatch({ type: 'MOVE_PARTY_TO', hexId: id })
               }

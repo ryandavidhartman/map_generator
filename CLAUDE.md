@@ -14,11 +14,21 @@ machines/sessions — the summary below is the durable copy).
 
 ## Status
 
-MVP complete and verified end-to-end in a real browser (Playwright driver,
-29/29 checks, zero console errors). All book tables transcribed, all
-generation logic unit-tested (58 Vitest tests), typecheck and build clean.
-Nothing is mid-flight; this is a good resume point for adding new features
-rather than finishing existing ones.
+Overland hex crawl MVP, plus zoom-in dungeon/settlement generation and
+random encounters (the "Sites, Settlements, Encounters & Multi-Campaign
+Mongo Persistence" plan, phases 1-2 of 4 — full plan at
+`~/.claude/plans/bright-watching-wolf.md`, may not survive across
+machines/sessions). All new work verified end-to-end in a real browser
+(Playwright driver, zero console errors) as well as unit-tested (160+
+Vitest tests). Typecheck and build clean.
+
+Phases 1-2 done: every new book table transcribed (dungeon sites,
+settlements/districts/taverns/shops, all 21 random-encounter d100 tables),
+the generation engine, the reducer wiring, and the hex full-view UI/routing.
+Phase 3 (settlement-district encounters) is substantially delivered as part
+of phase 2's UI. **Phase 4 (Node/Express + MongoDB multi-campaign
+persistence) is not started** — the app still persists a single map to
+localStorage only; see "Not done" below.
 
 ## Stack & environment gotchas
 
@@ -44,33 +54,103 @@ rather than finishing existing ones.
 
 ```
 src/
-  data/tables.ts       Single source of truth for every book table
-                        (terrain order + circular stepping, Hex Terrain 2d6,
-                        New Hex 2d6, Danger d6, Points of Interest d20,
-                        Cataclysm d8, Settlement Name d8x3-column).
+  data/tables.ts       Overland hex tables (terrain order + circular
+                        stepping, Hex Terrain 2d6, New Hex 2d6, Danger d6,
+                        Points of Interest d20, Cataclysm d8, Settlement
+                        Name d8x3-column). SETTLEMENT_LOCATIONS here is
+                        reused by engine/generateSite.ts's dispatcher.
+  data/dungeonTables.ts   Shadowdark Maps (dungeon side): Site Size/Type d6,
+                        Room Type d10 + per-type detail sub-tables (some are
+                        two-independent-roll "mix and match" columns, e.g.
+                        Trap), dungeon Danger Level d6 (no "Safe" outcome —
+                        distinct from the overland danger table).
+  data/settlementTables.ts  Settlement Type d6 (dice count IS the district
+                        count, never summed — see below), District Type,
+                        Alignment, 8 per-district POI tables, Taverns, Shops.
+  data/encounterTables.ts   All 21 book Random Encounters d100 tables
+                        (terrain + settlement district + tavern), transcribed
+                        as compact range-tuples expanded to 100-entry arrays.
+  data/siteColors.ts    Room-type/district-type color maps (GridLayoutSvg).
   engine/dice.ts        rollDie/roll2d6, RNG injectable for tests.
-  engine/generateHex.ts Orchestrates table lookups: rollStartingTerrain,
+  engine/generateHex.ts Orchestrates overland table lookups: rollStartingTerrain,
                         rollNextTerrain, rollDangerLevel, rollPointOfInterest
                         (chains into cataclysm/settlement rolls),
                         generateStartingHexDetails, generateNextHexDetails.
+  engine/gridLayout.ts  generateGridLayout(count, rng): shared random-walk
+                        grid-clustering algorithm — the digital equivalent of
+                        the book's "drop dice on paper, trace an outline"
+                        step. Drives both dungeon rooms and settlement
+                        districts; cell adjacency alone is the visible shape.
+  engine/generateDungeon.ts   generateDungeonSite(rng, overrideSiteType?).
+                        Site Type/Size are rolled fresh here, NEVER derived
+                        from the originating hex's POI location text (the
+                        book treats Shadowdark Maps as fully standalone).
+                        Objective/boss room = highest Room Type roll, first
+                        occurrence wins ties.
+  engine/generateSettlement.ts   generateSettlement(rng, overrideType?).
+                        Same "fresh roll, not POI-derived" rule as dungeons.
+                        District count = literal dice count (Village/Town
+                        d4, City d6, Metropolis d8) — NEVER summed. This also
+                        means Village/Town can only ever roll district types
+                        1-4 of 8 (Slums/Low/Artisan/Market), City reaches
+                        Temple District but not University/Castle, and only
+                        Metropolis reaches the full range. This tiering is
+                        intentional RAW — don't "fix" it later.
+  engine/generateTavern.ts, generateShop.ts  Ephemeral, re-rollable
+                        generators (ATT: not persisted onto a District).
+  engine/rollEncounter.ts     rollEncounter(tableKey, rng) — d100 lookup.
+  engine/generateSite.ts      generateSiteForHex(poi, rng) dispatcher: routes
+                        to generateSettlement vs generateDungeonSite based on
+                        SETTLEMENT_LOCATIONS.includes(poi.location).
   hexgrid/hexMath.ts    Axial coords, flat-top layout, neighbors, distance,
                         radius bounding, pixel conversion, SVG polygon corners.
   hexgrid/colors.ts     Shared terrain/danger color maps (HexTile + Legend).
-  hexgrid/HexTile.tsx   One hex: fill=terrain, stroke=danger, POI/party markers.
+  hexgrid/HexTile.tsx   One hex: fill=terrain, stroke=danger, POI/party
+                        markers. Single click moves the party (debounced
+                        250ms so it can be cancelled by a second click);
+                        double click opens the hex's full-view details page.
   hexgrid/HexGridSvg.tsx SVG canvas, hand-rolled drag-to-pan + wheel-to-zoom
                         (viewBox manipulation, no pan/zoom library).
+  hexgrid/GridLayoutSvg.tsx  Renders a generated dungeon/settlement's room/
+                        district grid as adjacent colored cells + corridor
+                        lines (parallel to HexGridSvg.tsx, no pan/zoom needed
+                        — grids max out at 12 rooms / 64 districts).
   state/mapReducer.ts   Hex/MapState types, MapAction union, pure reducer.
                         Party occupies one hex; MOVE_PARTY_TO only succeeds
                         into an adjacent hex within radius (reveals + rolls
                         if new, else just relocates if already revealed).
+                        Hex.site (GeneratedSite, settlement|dungeon) is set
+                        by GENERATE_SITE (idempotent) / REROLL_SITE
+                        (unconditional); REROLL_HEX and EDIT_HEX (when the
+                        patch touches poi) clear a stale site.
   state/MapContext.tsx  Context + useReducer provider, lazy-inits from
                         localStorage, persists on every change.
   persistence/localStorage.ts  save/load under key
                         `shadowdark-hex-crawl:map`. Fails silently if
-                        localStorage is unavailable.
-  components/           StartMapDialog, HexDetailsPanel (view/reroll/edit/
-                        move-here), Toolbar (New Map), Legend.
+                        localStorage is unavailable. Single-map only — no
+                        multi-campaign persistence yet (that's Phase 4).
+  components/           StartMapDialog, Toolbar (New Map), Legend,
+                        EncounterRoller (terrain/district d100 roll button).
+  components/hexdetail/ HexBaseInfo (id/terrain/danger/poi, move/reroll/edit
+                        — what HexDetailsPanel used to be, now embedded in
+                        every full-view variant instead of a map sidebar),
+                        WildernessView (no POI), DungeonSiteView (rooms via
+                        GridLayoutSvg + room list + Reroll Site),
+                        SettlementView (districts via GridLayoutSvg +
+                        expandable district list with POIs/alignment/
+                        Tavern+Shop generators + Reroll Site).
+  routes/HexDetailPage.tsx  The "/hex/:hexId" route. Auto-dispatches
+                        GENERATE_SITE on first visit to a POI hex (idempotent,
+                        so revisits are safe), then renders Wilderness/
+                        Dungeon/Settlement view based on hex.site.kind.
 ```
+
+Routing: `react-router-dom` v6, `BrowserRouter` in `main.tsx`. Two routes
+today: `/` (overland map) and `/hex/:hexId` (full view). Clicking a revealed
+hex on the overland map used to open a sidebar (`SELECT_HEX`) — it now
+double-click-navigates instead (see HexTile.tsx above); the old
+`HexDetailsPanel.tsx` sidebar component was deleted, its content lives in
+`HexBaseInfo.tsx`.
 
 Key design choices worth knowing before changing behavior:
 - Starting hex rolls danger + POI the same as any other hex — the book
@@ -82,6 +162,18 @@ Key design choices worth knowing before changing behavior:
 - Moving to an *already-revealed* adjacent hex just relocates the party
   (no reroll); moving into an *unrevealed* adjacent hex rolls it fresh.
   Both require adjacency — no free teleporting around the revealed map.
+- Site generation (dungeon/settlement) is dispatched by whether the hex's
+  POI *location* is a settlement name, but once dispatched, Site
+  Type/Size and Settlement Type are each rolled fresh and independently —
+  never derived from the POI's location/development text. Verified
+  directly against the book pages (Shadowdark Maps p.130, Settlement Maps
+  p.134 are presented as fully standalone generators with zero
+  cross-reference to the overland Points of Interest table).
+- A generated `site` is derived from a hex's `poi`, so anything that
+  changes `poi` (`REROLL_HEX`, or `EDIT_HEX` when the patch touches `poi`)
+  clears the existing `site` as stale rather than leaving mismatched
+  content behind. `GENERATE_SITE` is idempotent (no-op if a site already
+  exists); `REROLL_SITE` is the explicit unconditional regenerate.
 
 ## Two real bugs fixed during browser verification (don't reintroduce)
 
@@ -113,10 +205,10 @@ verification pattern (see below) rather than trusting typecheck/build alone
 ## Commands
 
 ```bash
-nvm use                  # Node 20.16.0
+nvm use                  # Node 20.16.0 (nvm alias default is now also set to this, machine-wide)
 npm install
 npm run dev               # http://localhost:5173
-npm run test               # Vitest, 58 tests
+npm run test               # Vitest, 160+ tests
 npm run build               # tsc -b && vite build
 npx tsc -b                   # typecheck only
 ```
@@ -127,19 +219,42 @@ No project-specific run skill exists yet. What worked this session: Playwright
 wasn't preinstalled and needed `npx playwright install chromium` (the cached
 browser version under `~/.cache/ms-playwright` didn't match the installed
 `playwright` npm package's expected build — a fresh `npx playwright install
-chromium` fixed it, ~300MB download). Drive it with a plain Node script using
-`require('playwright').chromium.launch({ args: ['--no-sandbox'] })` — there's
-no `chromium-cli` in this environment. Target hexes deterministically via the
-`data-hex-id="q,r"` attribute on each hex's `<g>` (added specifically to make
-this testable) — click the `<g>`, not the `<polygon>` child, since a hex with
-a point-of-interest marker covers the polygon's center with a `<circle>` and
+chromium` fixed it, ~300MB download). The `playwright` npm package itself
+isn't a project dependency (only its browser binaries are cached
+machine-wide) — a driver script needs `playwright` installed wherever it
+runs from (e.g. `npm install playwright` in a scratch dir, then run the
+script from there with Node 20).  Drive it with a plain Node script using
+`chromium.launch({ args: ['--no-sandbox'] })` — there's no `chromium-cli` in
+this environment. Target hexes deterministically via the `data-hex-id="q,r"`
+attribute on each hex's `<g>` (added specifically to make this testable) —
+click the `<g>`, not the `<polygon>` child, since a hex with a
+point-of-interest marker covers the polygon's center with a `<circle>` and
 strict actionability checks will refuse to click "through" it (a real user's
-click still works fine there via event bubbling).
+click still works fine there via event bubbling). Generated dungeon/settlement
+grid cells carry `data-room-id`/`data-district-id` the same way.
+
+**Timing gotcha since the single/double-click split (HexTile.tsx):** a plain
+`.click()` on a hex now only dispatches its action after a 250ms debounce (so
+a following click can cancel it and fire the double-click action instead) —
+`await page.waitForTimeout(300)` (or similar) after `.click()` before
+asserting on its effect, or use `.dblclick()` directly for the
+navigate-to-details action.
 
 ## Not done / possible next steps
 
-Everything in the original approved plan was built. Nothing is known-broken
-or half-finished. Ideas that came up but were intentionally out of scope:
+Phases 1-2 of the sites/settlements/encounters/Mongo plan are built and
+browser-verified (see Status above); nothing there is known-broken or
+half-finished. Remaining, not started:
+- **Phase 4: Node/Express + MongoDB backend for multi-campaign persistence.**
+  The app still only saves one map to localStorage — no named/listable
+  campaigns, no server, no `.env`, nothing. This is the biggest remaining
+  chunk of the plan.
+- A few Phase-2-adjacent items intentionally deferred rather than built:
+  a "Tomb" random-encounter table doesn't exist in the book, so dungeons of
+  that type fall back to the Ruins table (`SITE_TYPE_TO_ENCOUNTER_KEY`); the
+  book's Tavern d100 encounter table isn't wired to any UI trigger yet.
+
+Ideas that came up but were intentionally out of scope for this plan:
 - No way to export/share a generated map (image, JSON download, etc.)
 - No undo for reroll/edit actions
 - NPC name tables (book pp. 128-129, PDF pp. 132-133) were read during

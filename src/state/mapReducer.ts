@@ -6,6 +6,7 @@ import {
   rollPointOfInterest,
   type PointOfInterest,
 } from '../engine/generateHex'
+import { generateSiteForHex, type GeneratedSite } from '../engine/generateSite'
 import type { DangerLevel, Terrain } from '../data/tables'
 import { hexId, isWithinRadius, neighborsOf, parseHexId } from '../hexgrid/hexMath'
 
@@ -16,6 +17,7 @@ export type Hex = {
   terrain: Terrain
   danger: DangerLevel
   poi?: PointOfInterest
+  site?: GeneratedSite
 }
 
 export type MapState = {
@@ -40,6 +42,8 @@ export type MapAction =
   | { type: 'SELECT_HEX'; hexId: string }
   | { type: 'REROLL_HEX'; hexId: string; rng?: Rng }
   | { type: 'EDIT_HEX'; hexId: string; patch: HexEditPatch }
+  | { type: 'GENERATE_SITE'; hexId: string; rng?: Rng }
+  | { type: 'REROLL_SITE'; hexId: string; rng?: Rng }
   | { type: 'NEW_MAP' }
 
 export function isRevealed(state: MapState, id: string): boolean {
@@ -110,17 +114,41 @@ export function mapReducer(state: MapState, action: MapAction): MapState {
       const poi = rollPointOfInterest(action.rng)
       return {
         ...state,
-        hexes: { ...state.hexes, [action.hexId]: { ...hex, danger, poi } },
+        // poi is always re-rolled here, so any previously generated site (derived from the
+        // old poi) is now stale — clear it rather than leaving a mismatched site behind.
+        hexes: { ...state.hexes, [action.hexId]: { ...hex, danger, poi, site: undefined } },
       }
     }
 
     case 'EDIT_HEX': {
       const hex = state.hexes[action.hexId]
       if (!hex) return state
+      const patchTouchesPoi = 'poi' in action.patch
       return {
         ...state,
-        hexes: { ...state.hexes, [action.hexId]: { ...hex, ...action.patch } },
+        hexes: {
+          ...state.hexes,
+          [action.hexId]: {
+            ...hex,
+            ...action.patch,
+            ...(patchTouchesPoi ? { site: undefined } : {}),
+          },
+        },
       }
+    }
+
+    case 'GENERATE_SITE': {
+      const hex = state.hexes[action.hexId]
+      if (!hex || !hex.poi || hex.site) return state
+      const site = generateSiteForHex(hex.poi, action.rng)
+      return { ...state, hexes: { ...state.hexes, [action.hexId]: { ...hex, site } } }
+    }
+
+    case 'REROLL_SITE': {
+      const hex = state.hexes[action.hexId]
+      if (!hex || !hex.poi) return state
+      const site = generateSiteForHex(hex.poi, action.rng)
+      return { ...state, hexes: { ...state.hexes, [action.hexId]: { ...hex, site } } }
     }
 
     case 'NEW_MAP':
