@@ -16,9 +16,11 @@ machines/sessions — the summary below is the durable copy).
 
 Overland hex crawl MVP, plus zoom-in dungeon/settlement generation and
 random encounters (the "Sites, Settlements, Encounters & Multi-Campaign
-Mongo Persistence" plan, phases 1-2 of 4 — full plan at
-`~/.claude/plans/bright-watching-wolf.md`, may not survive across
-machines/sessions). All new work verified end-to-end in a real browser
+Mongo Persistence" plan — full plan at
+`docs/plan-sites-settlements-mongo.md`, checked into the repo so it
+survives clones/machines; a working copy also lives at
+`~/.claude/plans/bright-watching-wolf.md` but that path is local-only).
+All new work verified end-to-end in a real browser
 (Playwright driver, zero console errors) as well as unit-tested (160+
 Vitest tests). Typecheck and build clean.
 
@@ -46,7 +48,7 @@ in front of it** (plan updated accordingly):
    not isolated hexes (today's circular `TERRAIN_ORDER` stepping can drop a
    lone Ocean hex next to Mountain with no other water nearby).
 
-Full design detail for all three: `~/.claude/plans/bright-watching-wolf.md`.
+Full design detail for all three: `docs/plan-sites-settlements-mongo.md`.
 
 ## Stack & environment gotchas
 
