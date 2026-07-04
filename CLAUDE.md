@@ -31,8 +31,8 @@ Phase 3 (settlement-district encounters) is substantially delivered as part
 of phase 2's UI. Also done: hex tiles distinguish single-click (move party)
 from double-click (open full-view details) — see HexTile.tsx below.
 
-**Before Mongo persistence, two more requirements were added and sequenced
-in front of it** (plan updated accordingly):
+**Before Mongo persistence, requirements were added and sequenced in front
+of it, across two rounds** (plan updated accordingly):
 1. ✅ **Arbitrary-size hex maps — done.** The map no longer has a `radius`;
    `MapState`/`START_MAP` dropped the field entirely. Rendering is now
    frontier-based: `hexMath.ts`'s `computeVisibleCoords(revealedCoords)`
@@ -56,15 +56,50 @@ in front of it** (plan updated accordingly):
    refusal, confirmed no `radius` key in the persisted localStorage state,
    confirmed frontier de-duplication (2 revealed hexes sharing neighbors
    render as 10 tiles total, not 12), zero console errors.
-2. **Mongo backend + multi-campaign persistence — next up, not started.**
-3. **Neighbor-weighted terrain generation — not started, sequenced last.**
-   New-hex terrain should be influenced by all already-revealed neighbors,
-   not just the single predecessor hex the book's RAW stepping table uses.
-   Explicit requirement: Ocean must generate as coherent, contiguous bodies,
-   not isolated hexes (today's circular `TERRAIN_ORDER` stepping can drop a
-   lone Ocean hex next to Mountain with no other water nearby).
+2. **(2026-07-04) Real dungeon/settlement maps + monster/NPC population —
+   next up, not started, split into four phases.** Confirmed firm
+   requirement, not speculative polish: today's dungeon rooms and
+   settlement districts render as abstract uniform grid-blob cells
+   (`src/engine/gridLayout.ts`), and their POI/room content is book-table
+   flavor text with no actual monster/NPC entity attached. A sibling Scala
+   project this user also maintains,
+   `~/dev/source/shadowdark-rest`, already implements this at much higher
+   fidelity (BSP-style dungeon room layouts, Voronoi-district organic
+   settlements with smoothed boundaries and curved roads, NPC population
+   wired to settlement POIs) — intent is to reuse those algorithm/data-model
+   ideas (not literal code; different stack) rather than design from
+   scratch. Four phases, in order, all sequenced before Mongo for the same
+   schema-stability reason as arbitrary-size maps:
+   a. **Real dungeon maps** — BSP-style room layout (variable-sized rooms
+      tiling a coherent, non-rectangular floor plan), no new dependency.
+   b. **Dungeon monster/NPC population** — new Monster table (transcribed
+      from the book) + lightweight NPC generator, wired into the existing
+      "Solo Monster"/"Monster Mob"/"NPC" room-content rolls.
+   c. **Real settlement maps** — Voronoi districts, organic
+      unioned/smoothed boundary, curved road network. Requires this
+      project's first geometry-library dependency (Voronoi + polygon
+      boolean/buffer/simplify, e.g. `d3-delaunay` + `turf.js`).
+   d. **Settlement NPC population** — reuses (b)'s Monster/NPC engine to
+      populate district POIs with named NPCs.
+   Confirmed scope: dungeons + settlements only for now, not overland
+   random encounters. Full design sketches, file:line citations into
+   `shadowdark-rest`, and open questions for each sub-phase are in
+   `docs/plan-sites-settlements-mongo.md`.
+3. **Mongo backend + multi-campaign persistence — renumbered to phase 9,
+   not started.**
+4. **Neighbor-weighted terrain generation — not started, still sequenced
+   last (after Mongo).** New-hex terrain should be influenced by all
+   already-revealed neighbors, not just the single predecessor hex the
+   book's RAW stepping table uses. Explicit requirement: Ocean must
+   generate as coherent, contiguous bodies, not isolated hexes (today's
+   circular `TERRAIN_ORDER` stepping can drop a lone Ocean hex next to
+   Mountain with no other water nearby). Reviewing `shadowdark-rest`'s own
+   hex map generator surfaced a concrete recommended approach for this
+   (connected-component "keep largest cluster" trim + adjacency-gated
+   Ocean placement) — see the "Neighbor-weighted terrain generation"
+   section of the plan doc for specifics and file:line citations.
 
-Full design detail for all three: `docs/plan-sites-settlements-mongo.md`.
+Full design detail for all of the above: `docs/plan-sites-settlements-mongo.md`.
 
 ## Stack & environment gotchas
 
@@ -289,13 +324,18 @@ Phases 1-2 of the sites/settlements/encounters/Mongo plan, plus the
 arbitrary-size hex maps phase, are built and browser-verified (see Status
 above); nothing there is known-broken or half-finished. Agreed build order
 for what's left (see Status above and the plan file for design detail):
-1. **Node/Express + MongoDB backend for multi-campaign persistence.** The
+1. **Real dungeon maps** (BSP room layout, replacing the grid-blob cells).
+2. **Dungeon monster/NPC population** (new Monster table + NPC generator).
+3. **Real settlement maps** (Voronoi districts, organic boundary, roads —
+   first geometry-library dependency).
+4. **Settlement NPC population** (reuses (2)'s Monster/NPC engine).
+5. **Node/Express + MongoDB backend for multi-campaign persistence.** The
    app still only saves one map to localStorage — no named/listable
    campaigns, no server, no `.env`, nothing.
-2. **Neighbor-weighted terrain generation**, including making Ocean
-   generation form sensible contiguous bodies — design not yet fully
-   specified, see the plan file's placeholder section for candidate
-   approaches.
+6. **Neighbor-weighted terrain generation**, including making Ocean
+   generation form sensible contiguous bodies — design sketch (not final)
+   now exists in the plan file, informed by reviewing `shadowdark-rest`'s
+   own hex map generator.
 
 A few Phase-2-adjacent items intentionally deferred rather than built:
 a "Tomb" random-encounter table doesn't exist in the book, so dungeons of
@@ -306,5 +346,7 @@ Ideas that came up but were intentionally out of scope for this plan:
 - No way to export/share a generated map (image, JSON download, etc.)
 - No undo for reroll/edit actions
 - NPC name tables (book pp. 128-129, PDF pp. 132-133) were read during
-  planning but never asked for — could be a natural follow-up feature
-  (e.g. auto-naming settlements' notable NPCs).
+  earlier planning but not asked for at the time — **superseded**: NPC
+  population for dungeons/settlements is now confirmed required scope
+  (items 2 and 4 above), so these tables are relevant again whenever that
+  work starts.

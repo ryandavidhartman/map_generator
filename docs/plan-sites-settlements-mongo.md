@@ -12,15 +12,20 @@
 > `/campaigns/:campaignId/hex/:hexId`, a `CampaignListPage`/`CampaignMapPage`
 > split) written before Phase 2 was built. What actually shipped in Phase 2
 > is simpler: just `/` (overland map) and `/hex/:hexId` (full view) — no
-> campaign routing yet, since that's genuinely Phase 5 (Mongo) work. Treat
-> the original routes sketch as directional intent for Phase 5, not as
-> something already in the codebase.
+> campaign routing yet, since that's genuinely Phase 9 (Mongo, renumbered
+> after the real-maps/population phases were inserted — see Phasing below)
+> work. Treat the original routes sketch as directional intent for Phase 9,
+> not as something already in the codebase.
 
 ## Context
 
 The hex-crawl generator currently does one thing well: overland map generation, one hex at a time, persisted to a single browser-localStorage slot. The user wants the natural next layer: click into any revealed hex to see a dedicated "full view" for it, where a Point of Interest hex generates either a settlement (districts, taverns, shops) or a dungeon site (rooms, contents, objective room) using the corresponding Shadowdark book tables, laid out on a small procedurally-shaped grid. Any revealed hex should also support rolling a random encounter from its terrain's table. Because each overland map now represents an ongoing campaign for a specific party, and a GM will run multiple campaigns over time, this needs upgrading from single-slot localStorage to a real multi-campaign store — a small Node/Express + MongoDB backend.
 
-**Update:** Phases 1-3 below are done and browser-verified. Before starting the Mongo persistence work, the user raised two more requirements and set the build order: (1) support arbitrary-size hex maps (today's map is bounded to a fixed `radius` chosen at start) — sequenced *before* Mongo so the campaign schema never has to carry, then later drop, a `radius` field; (2) weight new-hex terrain generation by its already-revealed neighbors instead of only the single predecessor hex, with an explicit callout that Ocean generation needs to form sensible contiguous bodies rather than isolated hexes — sequenced *after* Mongo since it's a self-contained `generateHex.ts` change with no schema implications. See the "Arbitrary-size hex maps" and "Neighbor-weighted terrain generation" sections and the updated Phasing list below.
+**Update:** Phases 1-4 below are done and browser-verified. Before starting the Mongo persistence work, the user raised requirements and set the build order across two rounds:
+- Round 1: support arbitrary-size hex maps (today's map is bounded to a fixed `radius` chosen at start) — sequenced *before* Mongo so the campaign schema never has to carry, then later drop, a `radius` field. Done (Phase 4).
+- Round 2 (2026-07-04): the dungeon/settlement generators need to produce **real, detailed maps** (not the abstract grid-blob cell layout used today) and **populate them with actual generated monster/NPC entities**, not just book-table flavor text. This is confirmed firm scope, not speculative polish. A sibling Scala project this user also maintains, `~/dev/source/shadowdark-rest`, already implements this at a much higher fidelity (BSP-style dungeon room layouts, Voronoi-district organic settlements with smoothed boundaries and curved road networks, NPC population wired to settlement POIs) — the intent is to reuse those *algorithms/data-model ideas* (not literal code; different language/stack) rather than design from scratch. This split into four new phases (dungeon maps, dungeon population, settlement maps, settlement population), all sequenced *before* Mongo for the same schema-stability reason as arbitrary-size maps — see the four new phase sections below. Scope explicitly confirmed as dungeons + settlements only for now (not overland random encounters). Neighbor-weighted terrain generation (Ocean coherence) stays *after* Mongo, unchanged from Round 1's reasoning, since it's a self-contained `generateHex.ts` change with no schema implications.
+
+See the "Real dungeon maps", "Dungeon monster/NPC population", "Real settlement maps", "Settlement NPC population", "Arbitrary-size hex maps", and "Neighbor-weighted terrain generation" sections and the updated Phasing list below.
 
 All book tables for this work (Shadowdark Maps p.130-131, Overland Hex Maps p.132-133 [already implemented], Settlement Maps p.134-139, and the full Random Encounters appendix p.142-185) were read directly from the user's PDF earlier in this conversation — the raw table text is already in context and does not require re-reading the PDF during implementation.
 
@@ -142,8 +147,12 @@ Real-browser Playwright verification required (per this project's documented his
 2. ✅ **Hex full-view UI + navigation, local generation only, no Mongo.** Router, new routes/components, reducer changes, retire `HexDetailsPanel`. Playwright pass. Stopping point: fully playable single-campaign app, generation works, persistence still localStorage-only. — Done.
 3. ✅ **Random encounters wiring** — mostly delivered by phase 2's `EncounterRoller`; this phase adds the settlement-district-level rolling + Tavern/Shop generator buttons. — Substantially done as part of phase 2.
 4. ✅ **Arbitrary-size hex maps** — inserted here, before Mongo, specifically so the persisted campaign schema never has to carry (and later migrate away) a `radius` field. See "Arbitrary-size hex maps" section below for the design. — Done: `radius` removed from `MapState`/`START_MAP`/`StartMapDialog`; `hexMath.ts`'s `computeVisibleCoords` replaces `hexesInRadius`/`isWithinRadius` (both deleted as dead code); `isRevealableNow`/`MOVE_PARTY_TO` now only check party-adjacency. Browser-verified via Playwright (walked 4 hexes out with no refusal, confirmed frontier de-duplication, no `radius` key persisted, zero console errors) plus unit tests in `hexMath.test.ts`/`mapReducer.test.ts`.
-5. **Mongo backend + multi-campaign persistence** (renumbered from the original phase 4) — the most novel/riskiest territory, independently verifiable once phases 1-4 already work. `server/` scaffold, routes, dev tooling, `api.ts`, `CampaignListPage`, async `MapProvider`, Save button + autosave, one-time "import current local map as a new campaign" action for the existing single localStorage slot. Not started.
-6. **Neighbor-weighted terrain generation (incl. making Ocean generation coherent)** — sequenced last since it's a pure `engine/generateHex.ts` change with zero schema/storage implications either way; no reason to block anything else on it. See "Neighbor-weighted terrain generation" section below. Not started, design not yet fully specified.
+5. **Real dungeon maps** — BSP-style room layout (variable-sized rooms tiling a coherent, non-rectangular floor plan) replacing today's uniform grid-blob dungeon cells. No new dependency. See "Real dungeon maps" section below. Not started, design not yet fully specified.
+6. **Dungeon monster/NPC population** — new Monster table (transcribed from the book) + lightweight NPC generator, wired into the existing "Solo Monster"/"Monster Mob"/"NPC" room-content rolls so they produce real entities instead of flavor text. See "Dungeon monster/NPC population" section below. Not started, design not yet fully specified.
+7. **Real settlement maps** — Voronoi districts, organic unioned/smoothed town boundary, curved road network, replacing today's uniform grid-blob settlement districts. Requires a new geometry-library dependency (Voronoi + polygon boolean/buffer/simplify) — first such dependency in this project. See "Real settlement maps" section below. Not started, design not yet fully specified.
+8. **Settlement NPC population** — reuses phase 6's Monster/NPC engine to populate district POIs with named NPCs. See "Settlement NPC population" section below. Not started, design not yet fully specified.
+9. **Mongo backend + multi-campaign persistence** (renumbered from the original phase 4, then again after phases 5-8 were inserted) — the most novel/riskiest territory, independently verifiable once phases 1-8 already work. `server/` scaffold, routes, dev tooling, `api.ts`, `CampaignListPage`, async `MapProvider`, Save button + autosave, one-time "import current local map as a new campaign" action for the existing single localStorage slot. Not started.
+10. **Neighbor-weighted terrain generation (incl. making Ocean generation coherent)** — sequenced last since it's a pure `engine/generateHex.ts` change with zero schema/storage implications either way; no reason to block anything else on it. See "Neighbor-weighted terrain generation" section below. Not started, design not yet fully specified.
 
 ## Arbitrary-size hex maps
 
@@ -160,19 +169,81 @@ Real-browser Playwright verification required (per this project's documented his
 - Tests: `mapReducer.test.ts`'s "MOVE_PARTY_TO refuses a hex beyond the map radius" and the radius-based case in "isRevealableNow" need reworking — a hex should now only ever be refused for non-adjacency, never for radius. Add a test confirming a hex arbitrarily far from the origin is reachable by walking there one adjacent step at a time.
 - Playwright verification required per this project's convention — this touches SVG rendering/viewBox fitting, exactly the class of change that broke silently before (see CLAUDE.md's three documented bugs).
 
+## Real dungeon maps
+
+**Confirmed requirement, 2026-07-04 — design not yet finalized, this is a starting sketch.** Sequenced before Mongo (like arbitrary-size hex maps) so the persisted dungeon schema is settled before it's ever written to MongoDB.
+
+**Why:** `generateDungeonSite` (`src/engine/generateDungeon.ts`) currently places rooms via `gridLayout.ts`'s random-walk clustering onto uniform grid cells — deliberately simple per this project's original design, but not a "real" map: every room is the same size, laid out as a tree of unit cells. The user has confirmed this needs to become a real, detailed room layout.
+
+**Design sketch — porting the algorithm (not code; different stack) from the sibling project `~/dev/source/shadowdark-rest`'s `DungeonServer.scala`:**
+- Corner-notch footprint: start from a rectangular bounding area, carve one L-shaped notch out of a random corner (4 variants) for a non-rectangular starting outline (their `floorPlanFootprint`, `DungeonServer.scala:157-223`).
+- Recursive rectangle splitting (BSP) down to the rolled room count, alternating horizontal/vertical splits by aspect ratio (`splitToTargetCount`/`splitRectOnce`, `~225-279`).
+- Occasional hallway-strip carving: a leaf rectangle has a chance to be sliced into `room / hallway / room` (`addHallways`, `~281-327`).
+- Corridors connect rectangles whose edges overlap sufficiently, rather than a hand-authored graph (`buildFloorPlanCorridors`, `~1355-1380`).
+- Entrance placement: the N rooms nearest the outline boundary become entrance candidates, N scaling with dungeon size (`chooseEntrances`, `~481-489,564-568`).
+- No new geometry-library dependency needed — this is pure rectangle-splitting math, no polygon boolean ops.
+
+**Open questions for phase start:**
+- Whether BSP replaces `gridLayout.ts` for dungeons entirely, or becomes a second mode selected by site type (shadowdark-rest itself only uses BSP for Tomb/Ruins, keeping an older rejection-placement approach for Cave/Deep tunnels).
+- `GridLayoutSvg.tsx` renders uniform grid cells today; real BSP rooms are arbitrary pixel-space rectangles, so dungeons will need a new or substantially reworked SVG renderer separate from the grid-cell model settlements/districts still use (until phase 7 changes settlements too).
+
+## Dungeon monster/NPC population
+
+**Confirmed requirement, 2026-07-04 — design not yet finalized.** Sequenced immediately after "Real dungeon maps," before Mongo.
+
+**Why:** dungeon rooms already roll "Solo Monster"/"Monster Mob"/"NPC" as Room Type content (`src/data/dungeonTables.ts`), but today that only produces book-table flavor text, not an actual generated entity. Confirmed scope: dungeons + settlements only (not overland random encounters).
+
+**Design sketch:**
+- New `src/data/monsterTables.ts` — a Monster table transcribed from the Shadowdark book (this project has no monster data today). `shadowdark-rest`'s `Monster.scala`/`MonsterRepository` models one possible record shape, but its *content* should come straight from the book, not be copied from the sibling project's seeded Mongo data.
+- A lightweight NPC generator for dungeon "NPC" room content — does not need `shadowdark-rest`'s full Name/Race/Personality/Background character-generation pipeline; scope to what a GM needs at the table (name + a short trait/motivation is likely enough for a dungeon NPC, unlike a full character sheet).
+- Wire into `generateDungeon.ts`'s per-room detail rolls so "Solo Monster"/"Monster Mob"/"NPC" room types attach a real generated entity to the room instead of just descriptive text.
+
+## Real settlement maps
+
+**Confirmed requirement, 2026-07-04 — design not yet finalized. The biggest lift of the four new phases; requires this project's first geometry-library dependency.** Sequenced before Mongo.
+
+**Why:** `generateSettlement` (`src/engine/generateSettlement.ts`) lays out districts the same grid-blob way as dungeon rooms today. The user confirmed this needs to become a real, visually organic settlement map, matching the fidelity already built in `shadowdark-rest`'s `SettlementServer.scala` (explicitly chose full Voronoi/organic fidelity over a lighter rectangle-only alternative).
+
+**Design sketch — porting the algorithm (not code) from `SettlementServer.scala`:**
+- Voronoi districts: a jittered circular "city mask" boundary (`buildCityMask`, `SettlementServer.scala:506-523`) + Poisson-disc-like rejection-sampled site points inside it (`buildPoints`, `~406-425`) + a Voronoi diagram over those sites (their JTS `VoronoiDiagramBuilder`; `d3-delaunay` is the natural JS/TS equivalent) (`buildVoronoiCells`, `~468-504`).
+- Organic outline: union of district cell polygons, buffered outward to smooth concave notches between cells, simplified (Douglas-Peucker), then roughened with per-vertex jitter for a hand-drawn look (`buildSettlementOutline`, `~525-561`).
+- Curved organic road network: seat-to-nearest-2 main roads, an angular ring loop among non-seat districts when ≥3 exist, a nearest-neighbor minor road per district (guarantees no isolated district), edges bent into quadratic Beziers for a curved look (`buildRoadEdgesForPoints`/`buildRoadCurvesForPoints`, `~1805-1881`).
+- Building footprints: rejection-sampled rectangles biased toward road alignment or plaza radial placement, checked against polygon overlap (`generateBuildingFootprints`, `~609-736`). **Known bug, don't copy verbatim:** capped-attempt rejection sampling with no fallback/relaxation pass silently underfills dense districts (documented in `shadowdark-rest`'s own `AGENTS.md`) — add an explicit fallback/relaxation pass instead of a bare attempt cap.
+
+**Open questions for phase start:**
+- New dependency choice: a Voronoi library (`d3-delaunay`) plus polygon boolean/buffer/simplify (`turf.js` and/or `polygon-clipping`) — needs an explicit pick, this project has zero geometry libraries today.
+- `GridLayoutSvg.tsx`'s uniform-cell model doesn't fit polygons/curved roads at all; settlements need their own real polygon/path-based SVG renderer, likely superseding `GridLayoutSvg.tsx` for settlements specifically (dungeons may still use a rectangle-based renderer from phase 5 — these can differ).
+
+## Settlement NPC population
+
+**Confirmed requirement, 2026-07-04 — design not yet finalized.** Sequenced immediately after "Real settlement maps," before Mongo.
+
+**Why:** settlement district POIs already exist (`generateSettlement.ts` rolls POIs per district), but like dungeon rooms, they're text-only today. Confirmed scope: dungeons + settlements only (not overland random encounters).
+
+**Design sketch:**
+- Reuses the Monster/NPC generation engine built in "Dungeon monster/NPC population," extended with settlement-specific flavor.
+- `shadowdark-rest` keys settlement NPC generation off an `NpcQuality` model (`appearance`, `does`, `secret`, weighted `age`/`wealth`) combined with Name/Race/Personality/Background servers, matching Background to POI type by keyword (`SettlementServer.scala`, `NpcQualityRepository`/`NpcQualityServer`). **This specific code was not reviewed in detail during the initial map-generation research pass** (explicitly out of scope for that pass, which focused on map/terrain generation) — do a dedicated review of those files when this phase starts.
+- Open scope question for phase start: whether every POI gets an NPC, or only certain POI types (e.g. a shop/tavern gets a named proprietor; a "cairn" or "ravine" POI likely doesn't need one).
+
 ## Neighbor-weighted terrain generation
 
-**Not yet designed in detail — this note exists so the requirement isn't lost, not as an implementation spec.** Sequenced last (after Mongo) since it's a self-contained change to `engine/generateHex.ts`'s pure functions with no schema/storage implications, so it doesn't need to block or be blocked by anything else.
+**Design sketch below is more concrete than a placeholder now** (informed by reviewing `shadowdark-rest`'s hex map generator, which already solves an equivalent problem), but still not implemented. Sequenced last (after Mongo) since it's a self-contained change to `engine/generateHex.ts`'s pure functions with no schema/storage implications, so it doesn't need to block or be blocked by anything else.
 
 - The book's actual mechanic (`rollNextTerrain`, the New Hex 2d6 table) only steps relative to the *one* hex the party moved from. The user wants a new hex's terrain to be influenced by *all* of its already-revealed neighbors instead, for a more geographically coherent map. This is a deliberate house-rule layered on top of RAW, not a bug fix — today's predecessor-relative stepping is correct per the book and should probably remain available (e.g. as a fallback when a hex has only one revealed neighbor).
-- **Explicit requirement: Ocean must form sensible, contiguous bodies**, not isolated single hexes. Today `Ocean` sits between `River/coast` and `Mountain` in the circular `TERRAIN_ORDER`, so a plain step can drop a lone Ocean hex next to Mountain neighbors with no other water nearby — reads as geographically wrong. Candidate approaches to evaluate when this phase starts: weight the roll by a majority/plurality of revealed-neighbor terrains rather than only the predecessor; and/or give Ocean specific adjacency rules (e.g. it can only spread from an existing Ocean or River/coast neighbor, never appear via a plain unweighted step).
+- **Explicit requirement: Ocean must form sensible, contiguous bodies**, not isolated single hexes. Today `Ocean` sits between `River/coast` and `Mountain` in the circular `TERRAIN_ORDER`, so a plain step can drop a lone Ocean hex next to Mountain neighbors with no other water nearby — reads as geographically wrong.
+- **Recommended approach, found by reviewing `shadowdark-rest`'s `HexMapServer.scala`** (which independently solves this same problem for its own hex maps):
+  1. **Connected-component "keep largest cluster" trim.** Their `trimDisconnectedRivers` + `connectedComponents` (`HexMapServer.scala:412-472`) run a plain BFS/flood-fill over hex adjacency to find all River/coast clusters, keep only the largest, and downgrade every hex not in it back to land. This is a pure graph algorithm (no textures/rendering involved) that ports directly to TypeScript over our existing `neighborsOf` (`src/hexgrid/hexMath.ts`) and mechanically satisfies the contiguity requirement as a post-processing guarantee, regardless of whatever primary weighting logic picks the terrain.
+  2. **Adjacency-gated Ocean placement.** Their `nextTerrainStepWithRules`/`allowOcean` (`HexMapServer.scala:271-289,137`) only lets a hex roll Ocean if a neighbor is already Ocean (propagation) or via a small random seed chance — never a bare unweighted step onto Ocean. Prevents most isolated-Ocean cases before they'd even need trimming.
+  - **Important scaling caution — do not copy this part:** `shadowdark-rest`'s `nextMap` recomputes connectivity over its *entire* accumulated hex list on every single new hex added (`HexMapServer.scala:182`) — acceptable for their small bounded map bursts, but wrong for this project's now-unbounded map (Phase 4). Any port must scope recomputation to just the connected component touching the newly revealed hex, not the whole revealed set.
+  - Lower priority, more general technique also present there: a neighbor-majority "poll all 6 neighbors, pick the plurality axis" pattern (`riverAxisForDirs`, `HexMapServer.scala:363-375`) generalizes to weighting ordinary (non-Ocean) terrain by all revealed neighbors, not just the one predecessor — worth doing but not the load-bearing fix for the Ocean requirement specifically.
+  - **Edge-case policy to decide explicitly** (shadowdark-rest oscillated on this without settling it, per its own `AGENTS.md`): what happens when a freshly-revealed region has exactly one isolated water hex and no established coastline yet — strict "always trim" could wipe all water from a region that just hasn't been explored far enough to reveal its neighbors yet. Decide up front whether to special-case "allow exactly one isolated hex until N more neighbors are revealed" or accept the strict rule.
 
 ## Verification
 
 - `npm run test` (Vitest) after each phase — new suites listed above must pass alongside existing 58 tests.
 - `npx tsc -b` clean after each phase.
-- Playwright pass (per CLAUDE.md's existing pattern: `require('playwright').chromium.launch(...)`, target via `data-hex-id`/new `data-room-id`/`data-district-id`) after phases 2 and 4 specifically, since those touch rendering/navigation/async-loading — the categories that have broken silently before in this project.
-- Phase 4 additionally: manual smoke test of save → reload → same nested site content round-trips correctly through MongoDB (start local `mongod` or point `MONGODB_URI` at an accessible instance).
+- Playwright pass (per CLAUDE.md's existing pattern: `require('playwright').chromium.launch(...)`, target via `data-hex-id`/new `data-room-id`/`data-district-id`) after phases 2, 4, 5, 7, and 9 specifically, since those touch rendering/navigation/async-loading — the categories that have broken silently before in this project. (Phases 2 and 4 already done and verified this way; 5/7/9 are the new dungeon-renderer, settlement-renderer, and Mongo-async-load phases respectively.)
+- Phase 9 additionally: manual smoke test of save → reload → same nested site content round-trips correctly through MongoDB (start local `mongod` or point `MONGODB_URI` at an accessible instance).
 
 ## Open items to confirm before/while building (lower-stakes, decided pragmatically above but flagged)
 
