@@ -26,9 +26,27 @@ Phases 1-2 done: every new book table transcribed (dungeon sites,
 settlements/districts/taverns/shops, all 21 random-encounter d100 tables),
 the generation engine, the reducer wiring, and the hex full-view UI/routing.
 Phase 3 (settlement-district encounters) is substantially delivered as part
-of phase 2's UI. **Phase 4 (Node/Express + MongoDB multi-campaign
-persistence) is not started** — the app still persists a single map to
-localStorage only; see "Not done" below.
+of phase 2's UI. Also done: hex tiles distinguish single-click (move party)
+from double-click (open full-view details) — see HexTile.tsx below.
+
+**Before Mongo persistence, two more requirements were added and sequenced
+in front of it** (plan updated accordingly):
+1. **Arbitrary-size hex maps — next up, not started.** Today's map is
+   bounded to a fixed `radius` chosen at `START_MAP` time, and rendering
+   enumerates the *entire* radius disk every frame. This needs to become
+   frontier-based (render only revealed hexes + their unrevealed
+   neighbors) so the map can grow unbounded. Sequenced before Mongo
+   specifically so the campaign schema never carries a `radius` field that
+   would later need migrating away.
+2. **Mongo backend + multi-campaign persistence — not started.**
+3. **Neighbor-weighted terrain generation — not started, sequenced last.**
+   New-hex terrain should be influenced by all already-revealed neighbors,
+   not just the single predecessor hex the book's RAW stepping table uses.
+   Explicit requirement: Ocean must generate as coherent, contiguous bodies,
+   not isolated hexes (today's circular `TERRAIN_ORDER` stepping can drop a
+   lone Ocean hex next to Mountain with no other water nearby).
+
+Full design detail for all three: `~/.claude/plans/bright-watching-wolf.md`.
 
 ## Stack & environment gotchas
 
@@ -244,15 +262,24 @@ navigate-to-details action.
 
 Phases 1-2 of the sites/settlements/encounters/Mongo plan are built and
 browser-verified (see Status above); nothing there is known-broken or
-half-finished. Remaining, not started:
-- **Phase 4: Node/Express + MongoDB backend for multi-campaign persistence.**
-  The app still only saves one map to localStorage — no named/listable
-  campaigns, no server, no `.env`, nothing. This is the biggest remaining
-  chunk of the plan.
-- A few Phase-2-adjacent items intentionally deferred rather than built:
-  a "Tomb" random-encounter table doesn't exist in the book, so dungeons of
-  that type fall back to the Ruins table (`SITE_TYPE_TO_ENCOUNTER_KEY`); the
-  book's Tavern d100 encounter table isn't wired to any UI trigger yet.
+half-finished. Agreed build order for what's left (see Status above and
+the plan file for design detail):
+1. **Arbitrary-size hex maps** — frontier-based rendering instead of a
+   fixed `radius` disk; drop `radius` from `MapState`/`START_MAP`/
+   `StartMapDialog`; `isRevealableNow`/`MOVE_PARTY_TO` keep only the
+   party-adjacency check, not a radius bound.
+2. **Node/Express + MongoDB backend for multi-campaign persistence.** The
+   app still only saves one map to localStorage — no named/listable
+   campaigns, no server, no `.env`, nothing.
+3. **Neighbor-weighted terrain generation**, including making Ocean
+   generation form sensible contiguous bodies — design not yet fully
+   specified, see the plan file's placeholder section for candidate
+   approaches.
+
+A few Phase-2-adjacent items intentionally deferred rather than built:
+a "Tomb" random-encounter table doesn't exist in the book, so dungeons of
+that type fall back to the Ruins table (`SITE_TYPE_TO_ENCOUNTER_KEY`); the
+book's Tavern d100 encounter table isn't wired to any UI trigger yet.
 
 Ideas that came up but were intentionally out of scope for this plan:
 - No way to export/share a generated map (image, JSON download, etc.)
