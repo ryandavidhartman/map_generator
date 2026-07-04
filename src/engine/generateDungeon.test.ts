@@ -59,18 +59,20 @@ describe('generateDungeonSite', () => {
       forDieResult(1, 10), // room 0 -> Empty
       forDieResult(10, 10), // room 1 -> Boss Monster (tied max)
       forDieResult(1, 6), // room 1 detail
-      0, // room 1 monster roll
+      0, 0, // room 1 monster roll: site-type-weighted category pick, then entry-in-category pick
       forDieResult(1, 10), // room 2 -> Empty
       forDieResult(10, 10), // room 3 -> Boss Monster (tied max, later index)
       forDieResult(1, 6), // room 3 detail
-      0, // room 3 monster roll
+      0, 0, // room 3 monster roll
       forDieResult(1, 10), // room 4 -> Empty
     ])
     const site = generateDungeonSite(rng)
     expect(site.rooms.filter((r) => r.isObjectiveRoom)).toHaveLength(1)
     expect(site.rooms[1].isObjectiveRoom).toBe(true)
-    expect(site.rooms[1].monster).toBeDefined()
-    expect(site.rooms[3].monster).toBeDefined()
+    // Boss Monster excludes mundane creatures — 'Beaver, Giant' is the first non-mundane Animal
+    // entry (Cave's top-weighted category), confirming the mundane filter is actually applied.
+    expect(site.rooms[1].monster).toEqual({ name: 'Beaver, Giant', category: 'Animal' })
+    expect(site.rooms[3].monster).toEqual({ name: 'Beaver, Giant', category: 'Animal' })
     expect(site.rooms[3].isObjectiveRoom).toBe(false)
   })
 

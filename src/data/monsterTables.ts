@@ -14,8 +14,17 @@
 // (Brigand, Buccaneer/Pirate, Dervish, Merchant, Nomad) — expanded individually below rather
 // than kept as one generic "Men" entry. "NPC Parties" (a party-generation ruleset, not a
 // single NPC) and "Devils" (narrative-only in the source, no individual entries) are excluded.
+//
+// `mundane: true` marks ordinary real-world creatures (Cattle, Horse, Bull, etc.) — curated by
+// hand, not derived from any source data (no stats were transcribed to derive it from). Used to
+// keep them out of the Boss Monster pool (a dungeon's climactic threat shouldn't be a cow) while
+// leaving them available for Solo Monster/Monster Mob, where "a pack of wolves" or "a startled
+// horse" are perfectly normal low-stakes encounters. "Giant"/"Great"-qualified variants (Giant
+// Beaver, Cat, Great, etc.) are NOT marked mundane — they're legitimate escalated B/X monster
+// entries, not farm animals.
 
 import type { Rng } from '../engine/dice'
+import type { SiteType } from './dungeonTables'
 
 export type MonsterCategory =
   | 'Animal'
@@ -32,50 +41,49 @@ export type MonsterCategory =
   | 'Sylvan or Faerie Creature'
   | 'Undead'
 
-export type MonsterEntry = { name: string; category: MonsterCategory }
+export type MonsterEntry = { name: string; category: MonsterCategory; mundane?: boolean }
 
-// Kept as {name, category} (not a flat string list) so a future pass can bias selection by
-// dungeon site type (e.g. Undead for Tomb, Lost World/Animal for Cave) without new data — the
-// roll below is uniform across all categories for now, matching the "lightweight, name only"
-// scope confirmed for this phase.
+// Kept as {name, category} (not a flat string list) so category can drive both mundane
+// filtering (Boss Monster) and site-type theming (see SITE_TYPE_CATEGORY_WEIGHTS below).
 export const MONSTERS: MonsterEntry[] = [
-  // Animals
-  { name: 'Ape', category: 'Animal' },
-  { name: 'Baboon', category: 'Animal' },
-  { name: 'Baboon, Rock', category: 'Animal' },
-  { name: 'Badger', category: 'Animal' },
-  { name: 'Barracuda', category: 'Animal' },
-  { name: 'Bat', category: 'Animal' },
-  { name: 'Bear', category: 'Animal' },
+  // Animals — ordinary real-world creatures marked mundane (excluded from Boss Monster);
+  // "Giant"/"Great"-qualified variants are legitimate escalated monsters, left eligible.
+  { name: 'Ape', category: 'Animal', mundane: true },
+  { name: 'Baboon', category: 'Animal', mundane: true },
+  { name: 'Baboon, Rock', category: 'Animal', mundane: true },
+  { name: 'Badger', category: 'Animal', mundane: true },
+  { name: 'Barracuda', category: 'Animal', mundane: true },
+  { name: 'Bat', category: 'Animal', mundane: true },
+  { name: 'Bear', category: 'Animal', mundane: true },
   { name: 'Beaver, Giant', category: 'Animal' },
-  { name: 'Boar', category: 'Animal' },
-  { name: 'Buffalo', category: 'Animal' },
-  { name: 'Bull', category: 'Animal' },
-  { name: 'Camel', category: 'Animal' },
-  { name: 'Cat, Great', category: 'Animal' },
-  { name: 'Cattle', category: 'Animal' },
+  { name: 'Boar', category: 'Animal', mundane: true },
+  { name: 'Buffalo', category: 'Animal', mundane: true },
+  { name: 'Bull', category: 'Animal', mundane: true },
+  { name: 'Camel', category: 'Animal', mundane: true },
+  { name: 'Cat, Great', category: 'Animal', mundane: true },
+  { name: 'Cattle', category: 'Animal', mundane: true },
   { name: 'Crab, Giant', category: 'Animal' },
-  { name: 'Crocodile', category: 'Animal' },
-  { name: 'Elephant', category: 'Animal' },
+  { name: 'Crocodile', category: 'Animal', mundane: true },
+  { name: 'Elephant', category: 'Animal', mundane: true },
   { name: 'Ferret, Giant', category: 'Animal' },
   { name: 'Fish, Giant', category: 'Animal' },
-  { name: 'Hawk', category: 'Animal' },
-  { name: 'Herd Animals', category: 'Animal' },
-  { name: 'Horse', category: 'Animal' },
+  { name: 'Hawk', category: 'Animal', mundane: true },
+  { name: 'Herd Animals', category: 'Animal', mundane: true },
+  { name: 'Horse', category: 'Animal', mundane: true },
   { name: 'Leech, Giant', category: 'Animal' },
   { name: 'Lizards, Giant', category: 'Animal' },
-  { name: 'Mule', category: 'Animal' },
+  { name: 'Mule', category: 'Animal', mundane: true },
   { name: 'Octopus, Giant', category: 'Animal' },
-  { name: 'Rat', category: 'Animal' },
-  { name: 'Rhinoceros', category: 'Animal' },
-  { name: 'Shark', category: 'Animal' },
+  { name: 'Rat', category: 'Animal', mundane: true },
+  { name: 'Rhinoceros', category: 'Animal', mundane: true },
+  { name: 'Shark', category: 'Animal', mundane: true },
   { name: 'Shrew, Giant', category: 'Animal' },
-  { name: 'Snake', category: 'Animal' },
+  { name: 'Snake', category: 'Animal', mundane: true },
   { name: 'Squid, Giant', category: 'Animal' },
   { name: 'Toad, Giant', category: 'Animal' },
   { name: 'Weasel, Giant', category: 'Animal' },
-  { name: 'Whale', category: 'Animal' },
-  { name: 'Wolf', category: 'Animal' },
+  { name: 'Whale', category: 'Animal', mundane: true },
+  { name: 'Wolf', category: 'Animal', mundane: true },
 
   // Constructs
   { name: 'Animated Armor', category: 'Construct' },
@@ -214,8 +222,51 @@ export const MONSTERS: MonsterEntry[] = [
   { name: 'Zombie', category: 'Undead' },
 ]
 
-export function rollMonster(rng: Rng = Math.random): MonsterEntry {
-  return MONSTERS[Math.floor(rng() * MONSTERS.length)]
+// Thematic bias, not exclusion: a category not listed for a site type still gets a baseline
+// weight (DEFAULT_CATEGORY_WEIGHT) rather than zero, so an occasional off-theme surprise (a
+// stray Dragon anywhere, say) stays possible — only the listed categories are boosted relative
+// to that baseline. Curated by hand (subjective judgment call, not derived from source data):
+// Cave leans natural/wild, Tomb leans undead, Deep tunnels leans subterranean-labyrinth,
+// Ruins leans fallen-civilization.
+const DEFAULT_CATEGORY_WEIGHT = 1
+
+const SITE_TYPE_CATEGORY_WEIGHTS: Record<SiteType, Partial<Record<MonsterCategory, number>>> = {
+  Cave: { Animal: 5, 'Lost World': 4, Insect: 3, Monstrous: 2, Lycanthrope: 2 },
+  Tomb: { Undead: 6, Construct: 2 },
+  'Deep tunnels': { Insect: 3, Monstrous: 3, Humanoid: 2, Giant: 2, Elemental: 2 },
+  Ruins: { Construct: 3, Humanoid: 3, Undead: 2, 'Sylvan or Faerie Creature': 2 },
+}
+
+function pickWeightedCategory(categories: MonsterCategory[], weights: Partial<Record<MonsterCategory, number>>, rng: Rng): MonsterCategory {
+  const weighted = categories.map((category) => ({ category, weight: weights[category] ?? DEFAULT_CATEGORY_WEIGHT }))
+  const total = weighted.reduce((sum, w) => sum + w.weight, 0)
+  let roll = rng() * total
+  for (const { category, weight } of weighted) {
+    if (roll < weight) return category
+    roll -= weight
+  }
+  return weighted[weighted.length - 1].category // float-rounding fallback, never hit in practice
+}
+
+export type RollMonsterOptions = {
+  // Excludes ordinary real-world creatures — use for Boss Monster, not Solo Monster/Monster Mob.
+  excludeMundane?: boolean
+  // When given, biases category selection per SITE_TYPE_CATEGORY_WEIGHTS instead of picking
+  // uniformly across the whole (possibly mundane-filtered) pool.
+  siteType?: SiteType
+}
+
+export function rollMonster(rng: Rng = Math.random, options: RollMonsterOptions = {}): MonsterEntry {
+  const pool = options.excludeMundane ? MONSTERS.filter((m) => !m.mundane) : MONSTERS
+
+  if (!options.siteType) {
+    return pool[Math.floor(rng() * pool.length)]
+  }
+
+  const categories = [...new Set(pool.map((m) => m.category))]
+  const category = pickWeightedCategory(categories, SITE_TYPE_CATEGORY_WEIGHTS[options.siteType], rng)
+  const entriesInCategory = pool.filter((m) => m.category === category)
+  return entriesInCategory[Math.floor(rng() * entriesInCategory.length)]
 }
 
 // NPC archetypes, from the same source document's own "NPCs" category — used for the dungeon

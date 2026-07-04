@@ -63,7 +63,9 @@ export function generateDungeonSite(rng: Rng = Math.random, overrideSiteType?: S
           ? roomDetailForType(roomType, rollDie(6, rng), rollDie(6, rng))
           : roomDetailForType(roomType, rollDie(6, rng))
 
-    const monster: GeneratedMonster | undefined = MONSTER_ROOM_TYPES.includes(roomType) ? rollMonster(rng) : undefined
+    const monster: GeneratedMonster | undefined = MONSTER_ROOM_TYPES.includes(roomType)
+      ? rollMonster(rng, { siteType, excludeMundane: roomType === 'Boss Monster' })
+      : undefined
     const npc: GeneratedNpc | undefined = roomType === 'NPC' ? { type: rollNpcType(rng) } : undefined
 
     return {

@@ -129,6 +129,29 @@ of it, across two rounds** (plan updated accordingly):
       invariants (every monster-type room has `.monster`, every NPC room
       has `.npc`, no other room type has either); all 174 Vitest tests
       pass, `npx tsc -b`/`npm run build` clean.
+      **Same-day follow-up fix**, after the user flagged a generated
+      dungeon as having "no rhyme or reason" (Boss Monster had attached
+      "Cattle"; monster category ignored site type entirely): `MonsterEntry`
+      gained a hand-curated `mundane?: boolean` (~25 ordinary Animal-category
+      entries like Cattle/Horse/Bull/Wolf/Rat — "Giant"-qualified variants
+      are NOT marked mundane, they're legitimate escalated monsters) and
+      `rollMonster` gained `{ excludeMundane, siteType }` options.
+      `excludeMundane` is wired to Boss Monster only (Solo Monster/Monster
+      Mob still allow mundane creatures — a wolf pack is a normal low-stakes
+      encounter, just not a final boss). `SITE_TYPE_CATEGORY_WEIGHTS` biases
+      (not excludes) category selection per dungeon site type — Cave leans
+      Animal/Lost World/Insect, Tomb leans heavily Undead, Deep tunnels
+      leans Insect/Monstrous/Humanoid/Giant, Ruins leans
+      Construct/Humanoid/Undead/Sylvan-or-Faerie — wired to all three
+      monster room types. A third option (reroll to avoid exact-duplicate
+      detail text across rooms, e.g. two "Collapsing walls" rooms) was
+      **not** selected, deferred — see the plan doc's "Open items" section.
+      `monsterTables.test.ts` grew to 9 tests including a 500-sample
+      statistical check that Tomb's Undead weighting actually dominates;
+      all 178 Vitest tests pass. Browser-verified via Playwright: 0 mundane
+      violations across Boss Monster rooms in ~5 generated dungeons, Cave
+      dungeons showed the expected Animal/Lost World lean, zero console
+      errors.
    c. **Real settlement maps — not started.** Voronoi districts, organic
       unioned/smoothed boundary, curved road network. Requires this
       project's first geometry-library dependency (Voronoi + polygon

@@ -31,6 +31,44 @@ describe('MONSTERS', () => {
       }
     }
   })
+
+  it('has at least one mundane and one non-mundane entry per category (Boss Monster exclusion must never empty a category)', () => {
+    const categories = new Set(MONSTERS.map((m) => m.category))
+    for (const category of categories) {
+      const inCategory = MONSTERS.filter((m) => m.category === category)
+      expect(inCategory.some((m) => !m.mundane)).toBe(true)
+    }
+  })
+
+  it('excludeMundane never returns a mundane entry', () => {
+    for (const seed of [1, 42, 12345]) {
+      const rng = seededRng(seed)
+      for (let i = 0; i < 50; i++) {
+        expect(rollMonster(rng, { excludeMundane: true }).mundane).toBeFalsy()
+      }
+    }
+  })
+
+  it('siteType biases category selection toward that site\'s themed categories', () => {
+    const rng = seededRng(99)
+    const categoryCounts: Record<string, number> = {}
+    for (let i = 0; i < 500; i++) {
+      const { category } = rollMonster(rng, { siteType: 'Tomb' })
+      categoryCounts[category] = (categoryCounts[category] ?? 0) + 1
+    }
+    // Tomb weights Undead at 6x baseline — expect it to dominate the distribution.
+    const undeadShare = (categoryCounts['Undead'] ?? 0) / 500
+    expect(undeadShare).toBeGreaterThan(0.3)
+  })
+
+  it('siteType + excludeMundane combine (Boss Monster in a Tomb still excludes mundane entries)', () => {
+    for (const seed of [1, 42, 12345]) {
+      const rng = seededRng(seed)
+      for (let i = 0; i < 50; i++) {
+        expect(rollMonster(rng, { siteType: 'Cave', excludeMundane: true }).mundane).toBeFalsy()
+      }
+    }
+  })
 })
 
 describe('NPC_TYPES', () => {
