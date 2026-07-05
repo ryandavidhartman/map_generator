@@ -152,10 +152,56 @@ of it, across two rounds** (plan updated accordingly):
       violations across Boss Monster rooms in ~5 generated dungeons, Cave
       dungeons showed the expected Animal/Lost World lean, zero console
       errors.
-   c. **Real settlement maps — not started.** Voronoi districts, organic
-      unioned/smoothed boundary, curved road network. Requires this
-      project's first geometry-library dependency (Voronoi + polygon
-      boolean/buffer/simplify, e.g. `d3-delaunay` + `turf.js`).
+   c. ✅ **Real settlement maps — done.** New dependencies: `d3-delaunay`
+      (Voronoi) + `polygon-clipping` (polygon intersection) — this
+      project's first geometry libraries, both verified compatible with
+      the Vite 5/Node 20 toolchain via a direct smoke test before
+      adopting; `turf.js` turned out unnecessary after a scope
+      simplification (see below). Found and worked around a real bug in
+      `polygon-clipping@0.15.7`: its `.d.ts` declares named exports but
+      the actual ESM bundle only exports a `default` object containing
+      them — isolated in new `src/engine/polygonClip.ts` so the rest of
+      the app just imports a correctly-typed `intersectPolygons(a, b)`.
+      **Scope simplification**: instead of shadowdark-rest's two-step
+      "Voronoi cells, then separately union+buffer+simplify them into an
+      outline," this project generates the organic jittered boundary
+      ("city mask") *first* and clips every Voronoi cell to it directly —
+      the mask already IS the organic outline, so no union/buffer pass
+      (and thus no `turf.js`) was needed. New `src/engine/settlementLayout.ts`
+      (mirrors `dungeonLayout.ts`'s role): `buildCityMask` (20 jittered
+      angular samples around a circle, radius scales with
+      `sqrt(districtCount)`), `sampleDistrictSites` (Poisson-disc-like
+      rejection sampling with a relax-then-fallback bounded retry, same
+      shape as `gridLayout.ts`'s anchor-retry), `buildVoronoiDistricts`
+      (one Voronoi cell per site, clipped to the mask, largest piece kept
+      if clipping ever yields multiple disjoint pieces), `buildRoadEdges`
+      (pure function of site positions — seat-to-2-nearest main roads,
+      angular ring loop among non-seat sites when ≥3 exist, every site
+      gets a nearest-neighbor minor road so nothing is isolated).
+      `generateSettlement.ts`'s `District.cell`/`parentDistrictId` became
+      `District.site`/`polygon`; `Settlement` gained `mask` and `roads`
+      (district-id pairs, mirroring `DungeonSite.connections`). New
+      `src/hexgrid/SettlementMapSvg.tsx` (parallel to `DungeonMapSvg.tsx`)
+      renders real polygons + curved roads (SVG native quadratic-Bezier
+      `<path>`, no curve library needed — just one computed control point
+      per edge). `GridLayoutSvg.tsx` is now settlement-districts-free,
+      dungeons/districts each have their own dedicated renderer.
+      **Deliberately deferred**, matching phase 5's precedent: building
+      footprints/plazas — shadowdark-rest's own docs flag its version as
+      a buggy, capped-attempt rejection sampler that silently underfills;
+      not worth porting as-is, addable later with no schema change.
+      New `settlementLayout.test.ts` (11 tests) + `generateSettlement.test.ts`
+      rewritten from exact-scripted-rng to seeded+structural (rejection
+      sampling has a variable rng call count, same shift `gridLayout.test.ts`
+      already established). All 189 Vitest tests pass, `npx tsc
+      -b`/`npm run build` clean (bundle ~332KB, ~110KB gzipped). Browser
+      + screenshot verified via Playwright: a 4-district Town rendered 4
+      real polygons with 4 distinct vertex counts (8/9/10/11, confirming
+      genuine Voronoi irregularity) connected by 5 curved roads; a
+      6-district city screenshot confirmed an organic non-circular
+      boundary with districts tiling it correctly; district
+      click-to-expand and Reroll Site both still work; zero console
+      errors.
    d. **Settlement NPC population — not started.** Reuses (b)'s Monster/NPC
       engine to populate district POIs with named NPCs.
    Confirmed scope: dungeons + settlements only for now, not overland
@@ -197,6 +243,19 @@ Full design detail for all of the above: `docs/plan-sites-settlements-mongo.md`.
   advisories from transitive vite/vitest deps (GHSA-67mh-4wv8-2f99). Known,
   low-risk for local dev, not fixed (fixing means jumping to Vite 6+, which
   reopens the Rolldown risk above — revisit only if actually upgrading Vite).
+- **First geometry-library dependencies, added for real settlement maps**:
+  `d3-delaunay` (Voronoi) + `polygon-clipping` (polygon intersection) +
+  `@types/d3-delaunay` (polygon-clipping ships its own types;
+  d3-delaunay doesn't). Both verified ESM-compatible with this Vite
+  5/Node 20 toolchain via a direct smoke test before adopting — no new
+  `npm audit` advisories beyond the pre-existing esbuild one above.
+  **`polygon-clipping@0.15.7` has a real type/runtime mismatch**: its
+  `.d.ts` declares named exports, but the actual ESM bundle only exports
+  a `default` object containing those functions — `import { intersection
+  } from 'polygon-clipping'` typechecks but is `undefined` at runtime.
+  Worked around once in `src/engine/polygonClip.ts`; don't import
+  `polygon-clipping` directly elsewhere, use that wrapper's
+  `intersectPolygons`.
 
 ## Architecture
 
@@ -224,12 +283,6 @@ src/
                         rollNextTerrain, rollDangerLevel, rollPointOfInterest
                         (chains into cataclysm/settlement rolls),
                         generateStartingHexDetails, generateNextHexDetails.
-  engine/gridLayout.ts  generateGridLayout(count, rng): shared random-walk
-                        grid-clustering algorithm — the digital equivalent of
-                        the book's "drop dice on paper, trace an outline"
-                        step. Drives settlement districts (dungeons moved to
-                        dungeonLayout.ts below); cell adjacency alone is the
-                        visible shape.
   engine/dungeonLayout.ts   generateDungeonLayout(roomCount, rng): BSP-style
                         floor-plan layout — recursively splits a bounding
                         rectangle into exactly roomCount variable-sized leaf
@@ -238,8 +291,25 @@ src/
                         enforced by construction). Connections are real
                         geometric adjacency (shared boundary segment) between
                         leaf rects, not a parent tree — a room can connect to
-                        more than one neighbor. Replaces gridLayout.ts for
-                        dungeons only (real dungeon/settlement maps phase a).
+                        more than one neighbor.
+  engine/settlementLayout.ts   buildCityMask/sampleDistrictSites/
+                        buildVoronoiDistricts/buildRoadEdges: real Voronoi
+                        settlement layout — a jittered organic boundary
+                        ("city mask") generated first, district sites
+                        rejection-sampled inside it, one Voronoi cell per
+                        site clipped directly to the mask (the mask itself
+                        IS the organic outline — no separate union/buffer
+                        pass needed), roads a pure function of site
+                        positions (seat + 2 nearest, angular ring loop,
+                        per-site nearest-neighbor). Uses d3-delaunay
+                        (Voronoi) + polygon-clipping (mask clipping) — see
+                        engine/polygonClip.ts for a real bug workaround in
+                        the latter (its .d.ts declares named exports; the
+                        actual ESM bundle only has a default export).
+                        engine/gridLayout.ts (the old uniform-cell
+                        random-walk layout used by both dungeons and
+                        settlements) is gone — removed as dead code once
+                        both moved to their own dedicated layout engines.
   engine/generateDungeon.ts   generateDungeonSite(rng, overrideSiteType?).
                         Site Type/Size are rolled fresh here, NEVER derived
                         from the originating hex's POI location text (the
@@ -279,20 +349,23 @@ src/
                         (lazy useState initializer) and intentionally not
                         recomputed as the frontier grows, so revealing new hexes
                         doesn't yank the camera away from a panned/zoomed view.
-  hexgrid/GridLayoutSvg.tsx  Renders a generated settlement's district grid
-                        as adjacent colored cells + corridor lines (parallel
-                        to HexGridSvg.tsx, no pan/zoom needed — grids max out
-                        at 64 districts). Dungeons moved to DungeonMapSvg.tsx
-                        below; this file is settlement-only until phase (c)
-                        of the real-maps work gives districts the same
-                        real-shape treatment.
   hexgrid/DungeonMapSvg.tsx  Renders a generated dungeon's real BSP room
                         layout: variable-sized pixel-space rectangles
                         (src/engine/dungeonLayout.ts) + corridor lines
                         between geometrically-adjacent rooms (a room can have
-                        more than one corridor, unlike GridLayoutSvg's
-                        single-parent-edge model). data-room-id Playwright
-                        convention preserved.
+                        more than one corridor, not just a single parent
+                        edge). data-room-id Playwright convention preserved.
+  hexgrid/SettlementMapSvg.tsx  Renders a generated settlement's real Voronoi
+                        layout (src/engine/settlementLayout.ts): the jittered
+                        mask as a background boundary polygon, each district
+                        as its real clipped polygon, roads as SVG native
+                        quadratic-Bezier `<path>`s (one computed control
+                        point per edge — no curve library needed). Replaced
+                        the old hexgrid/GridLayoutSvg.tsx (uniform grid
+                        cells), which is gone — removed as dead code once
+                        both dungeons and settlements had their own real
+                        renderers. data-district-id Playwright convention
+                        preserved.
   state/mapReducer.ts   Hex/MapState types, MapAction union, pure reducer.
                         Party occupies one hex; MOVE_PARTY_TO only succeeds
                         into an adjacent hex (no map-size bound — reveals +
@@ -421,24 +494,27 @@ navigate-to-details action.
 ## Not done / possible next steps
 
 Phases 1-2 of the sites/settlements/encounters/Mongo plan, the
-arbitrary-size hex maps phase, real dungeon maps (BSP room layout), and
+arbitrary-size hex maps phase, real dungeon maps (BSP room layout),
 dungeon monster/NPC population (name/flavor only, from the user's B/X
-compilation — see Status above) are built and browser-verified; nothing
-there is known-broken or half-finished. Dungeon map rendering is still
-visually schematic (flat colored rectangles, corridors barely visible) —
-deferred on purpose, likely bundled with settlement rendering below.
-Agreed build order for what's left (see Status above and the plan file for
-design detail):
-1. **Real settlement maps** (Voronoi districts, organic boundary, roads —
-   first geometry-library dependency).
-2. **Settlement NPC population** (reuses the dungeon phase's Monster/NPC
+compilation), and real settlement maps (Voronoi districts + organic
+boundary + curved roads — see Status above) are all built and
+browser-verified; nothing there is known-broken or half-finished.
+**Visual-fidelity asymmetry worth knowing about**: settlements now render
+with real organic geometry and curved roads, while dungeons (built one
+phase earlier) still render as flat colored rectangles with barely-visible
+corridors — the dungeon visual-polish deferral noted back in phase 5
+hasn't been revisited since; worth doing now that settlements demonstrate
+a richer visual bar, but not automatically done just because settlements
+shipped. Agreed build order for what's left (see Status above and the plan
+file for design detail):
+1. **Settlement NPC population** (reuses the dungeon phase's Monster/NPC
    engine).
-3. **Node/Express + MongoDB backend for multi-campaign persistence.** The
+2. **Node/Express + MongoDB backend for multi-campaign persistence.** The
    app still only saves one map to localStorage — no named/listable
    campaigns, no server, no `.env`, nothing. Reuses a shared Atlas cluster
    the user already has (new database, not the other project's) — see the
    "Backend for MongoDB" section's "Reuse note" in the plan file.
-4. **Neighbor-weighted terrain generation**, including making Ocean
+3. **Neighbor-weighted terrain generation**, including making Ocean
    generation form sensible contiguous bodies — design sketch (not final)
    now exists in the plan file, informed by reviewing `shadowdark-rest`'s
    own hex map generator.

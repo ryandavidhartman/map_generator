@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMapDispatch } from '../../state/MapContext'
 import type { Hex } from '../../state/mapReducer'
 import type { Settlement, District } from '../../engine/generateSettlement'
-import { GridLayoutSvg, type GridLayoutCellData } from '../../hexgrid/GridLayoutSvg'
+import { SettlementMapSvg, type SettlementMapDistrictData } from '../../hexgrid/SettlementMapSvg'
 import { DISTRICT_TYPE_COLORS } from '../../data/siteColors'
 import { DISTRICT_TYPE_TO_ENCOUNTER_KEY } from '../../data/encounterTables'
 import { generateTavern, type Tavern } from '../../engine/generateTavern'
@@ -26,15 +26,17 @@ export function SettlementView({ hex, site }: { hex: Hex; site: Settlement }) {
     setExpandedId((current) => (current === id ? null : id))
   }
 
-  const cells: GridLayoutCellData[] = site.districts.map((d) => ({
+  const districts: SettlementMapDistrictData[] = site.districts.map((d) => ({
     id: d.id,
-    cell: d.cell,
-    parentId: d.parentDistrictId,
+    site: { x: d.site[0], y: d.site[1] },
+    polygon: d.polygon.map(([x, y]) => ({ x, y })),
     color: DISTRICT_TYPE_COLORS[d.districtType],
     label: d.isSeatOfGovernment ? '★' : String(d.index + 1),
     highlighted: d.isSeatOfGovernment,
     onClick: () => toggle(d.id),
   }))
+  const mask = site.mask.map(([x, y]) => ({ x, y }))
+  const roads = site.roads.map((r) => ({ aId: r.a, bId: r.b, kind: r.kind }))
 
   return (
     <div className="site-view">
@@ -52,7 +54,7 @@ export function SettlementView({ hex, site }: { hex: Hex; site: Settlement }) {
         </div>
 
         <div className="site-layout">
-          <GridLayoutSvg cells={cells} cellIdAttribute="district-id" />
+          <SettlementMapSvg mask={mask} districts={districts} roads={roads} />
         </div>
 
         <ul className="district-list">

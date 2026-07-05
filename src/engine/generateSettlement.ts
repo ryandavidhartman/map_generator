@@ -9,13 +9,13 @@ import {
   type DistrictType,
   type Alignment,
 } from '../data/settlementTables'
-import { generateGridLayout, type GridCell } from './gridLayout'
+import { buildCityMask, buildRoadEdges, buildVoronoiDistricts, sampleDistrictSites, type Point, type RoadEdge } from './settlementLayout'
 
 export type District = {
   id: string
   index: number
-  cell: GridCell
-  parentDistrictId: string | null
+  site: Point
+  polygon: Point[]
   districtType: DistrictType
   districtTypeRoll: number
   alignment: Alignment
@@ -27,6 +27,9 @@ export type Settlement = {
   kind: 'settlement'
   settlementType: SettlementType
   districts: District[]
+  mask: Point[]
+  // District-id pairs for road rendering, mirroring DungeonSite.connections.
+  roads: { a: string; b: string; kind: 'main' | 'minor' }[]
 }
 
 // Settlement Type is rolled fresh here — never derived from the originating hex's POI text
@@ -36,9 +39,12 @@ export type Settlement = {
 // University/Castle), and only Metropolis rolls d8 (the full range). Preserve this tiering.
 export function generateSettlement(rng: Rng = Math.random, overrideSettlementType?: SettlementType): Settlement {
   const spec = overrideSettlementType ? settlementTypeSpecFor(overrideSettlementType) : settlementTypeForD6(rollDie(6, rng))
-  const placements = generateGridLayout(spec.diceCount, rng)
 
-  const districts: District[] = placements.map((placement, index) => {
+  const mask = buildCityMask(spec.diceCount, rng)
+  const sites = sampleDistrictSites(spec.diceCount, mask, rng)
+  const polygons = buildVoronoiDistricts(sites, mask)
+
+  const districts: District[] = sites.map((site, index) => {
     const districtTypeRoll = rollDie(spec.diceSides, rng)
     const districtType = districtTypeForRoll(districtTypeRoll, spec.diceSides)
     const alignment = alignmentForD6(rollDie(6, rng))
@@ -48,8 +54,8 @@ export function generateSettlement(rng: Rng = Math.random, overrideSettlementTyp
     return {
       id: `district-${index}`,
       index,
-      cell: placement.cell,
-      parentDistrictId: placement.parentIndex === null ? null : `district-${placement.parentIndex}`,
+      site,
+      polygon: polygons[index],
       districtType,
       districtTypeRoll,
       alignment,
@@ -66,5 +72,8 @@ export function generateSettlement(rng: Rng = Math.random, overrideSettlementTyp
   }
   if (districts.length > 0) districts[seatIndex] = { ...districts[seatIndex], isSeatOfGovernment: true }
 
-  return { kind: 'settlement', settlementType: spec.type, districts }
+  const roadEdges: RoadEdge[] = buildRoadEdges(sites, seatIndex)
+  const roads = roadEdges.map(({ a, b, kind }) => ({ a: `district-${a}`, b: `district-${b}`, kind }))
+
+  return { kind: 'settlement', settlementType: spec.type, districts, mask, roads }
 }

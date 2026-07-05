@@ -1,18 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { generateSettlement } from './generateSettlement'
 
-function scripted(values: number[]): () => number {
-  let i = 0
-  return () => {
-    if (i >= values.length) throw new Error('scripted rng ran out of values')
-    return values[i++]
-  }
-}
-
-function forDieResult(n: number, sides: number): number {
-  return (n - 1) / sides
-}
-
+// The real Voronoi-based layout (settlementLayout.ts) uses rejection sampling for district
+// site placement, which has a variable, non-scriptable rng call count — same shape as
+// gridLayout.ts's anchor-retry fallback. Tests here use seeded rng + structural invariants
+// throughout rather than exact-scripted rng values (see settlementLayout.test.ts for
+// dedicated layout-geometry tests: no-overlap, connectivity, mask containment, etc.).
 function seededRng(seed: number): () => number {
   let state = seed >>> 0
   return () => {
@@ -23,59 +16,27 @@ function seededRng(seed: number): () => number {
 
 describe('generateSettlement', () => {
   it('rolls settlement type, then one district per die of that tier', () => {
-    const rng = scripted([
-      forDieResult(1, 6), // settlement type d6 -> Village (3 districts, d4 each)
-      0, 0, 0, 0, // grid layout: 2 additional districts x 2 rng calls each
-      forDieResult(2, 4), // district 0 type -> Low District
-      forDieResult(1, 6), // district 0 alignment -> Lawful
-      forDieResult(1, 4), // district 0 poi count -> 1
-      forDieResult(1, 6), // district 0 poi roll
-      forDieResult(3, 4), // district 1 type -> Artisan District
-      forDieResult(1, 6), // district 1 alignment
-      forDieResult(1, 4), // district 1 poi count -> 1
-      forDieResult(1, 6), // district 1 poi roll
-      forDieResult(1, 4), // district 2 type -> Slums
-      forDieResult(1, 6), // district 2 alignment
-      forDieResult(1, 4), // district 2 poi count -> 1
-      forDieResult(1, 6), // district 2 poi roll
-    ])
-    const settlement = generateSettlement(rng)
+    const settlement = generateSettlement(seededRng(1))
     expect(settlement.kind).toBe('settlement')
-    expect(settlement.settlementType).toBe('Village')
-    expect(settlement.districts).toHaveLength(3)
-    expect(settlement.districts[0].districtType).toBe('Low District')
-    expect(settlement.districts[1].districtType).toBe('Artisan District')
-    expect(settlement.districts[2].districtType).toBe('Slums')
-    expect(settlement.districts[0].pointsOfInterest).toHaveLength(1)
+    expect([3, 4, 6, 8]).toContain(settlement.districts.length)
+    for (const district of settlement.districts) {
+      expect(district.pointsOfInterest.length).toBeGreaterThanOrEqual(1)
+      expect(district.pointsOfInterest.length).toBeLessThanOrEqual(4)
+    }
   })
 
   it('marks the single highest district-type roll as seat of government, first occurrence wins ties', () => {
-    const rng = scripted([
-      forDieResult(1, 6), // Village
-      0, 0, 0, 0, // grid layout
-      forDieResult(4, 4), // district 0 type roll -> Market (tied max)
-      forDieResult(1, 6), // alignment
-      forDieResult(1, 4), // poi count -> 1
-      forDieResult(1, 6), // poi roll
-      forDieResult(4, 4), // district 1 type roll -> Market (tied max, later index)
-      forDieResult(1, 6),
-      forDieResult(1, 4),
-      forDieResult(1, 6),
-      forDieResult(1, 4), // district 2 type roll -> Slums (not tied)
-      forDieResult(1, 6),
-      forDieResult(1, 4),
-      forDieResult(1, 6),
-    ])
-    const settlement = generateSettlement(rng)
-    expect(settlement.districts.filter((d) => d.isSeatOfGovernment)).toHaveLength(1)
-    expect(settlement.districts[0].isSeatOfGovernment).toBe(true)
-    expect(settlement.districts[1].isSeatOfGovernment).toBe(false)
+    for (const seed of [1, 2, 3, 42, 12345]) {
+      const settlement = generateSettlement(seededRng(seed))
+      const seats = settlement.districts.filter((d) => d.isSeatOfGovernment)
+      expect(seats).toHaveLength(1)
+      const maxRoll = Math.max(...settlement.districts.map((d) => d.districtTypeRoll))
+      const firstMaxIndex = settlement.districts.findIndex((d) => d.districtTypeRoll === maxRoll)
+      expect(seats[0].index).toBe(firstMaxIndex)
+    }
   })
 
   it('an override settlement type skips the type roll entirely', () => {
-    // Uses a seeded (non-exact-scripted) rng since 8 districts can trigger the grid
-    // layout's anchor-retry/BFS-fallback path — only the override behavior is under test
-    // here, not exact roll-for-roll tracing (see the tie-break test above for that).
     const settlement = generateSettlement(seededRng(7), 'Metropolis')
     expect(settlement.settlementType).toBe('Metropolis')
     expect(settlement.districts).toHaveLength(8)
@@ -94,6 +55,7 @@ describe('generateSettlement', () => {
       for (const district of settlement.districts) {
         expect(district.pointsOfInterest.length).toBeGreaterThanOrEqual(1)
         expect(district.pointsOfInterest.length).toBeLessThanOrEqual(4)
+        expect(district.polygon.length).toBeGreaterThanOrEqual(3)
         if (settlement.settlementType === 'Village' || settlement.settlementType === 'Town') {
           expect(['Slums', 'Low District', 'Artisan District', 'Market']).toContain(district.districtType)
         }
@@ -102,8 +64,36 @@ describe('generateSettlement', () => {
         }
       }
 
-      const cellKeys = settlement.districts.map((d) => `${d.cell.row},${d.cell.col}`)
-      expect(new Set(cellKeys).size).toBe(settlement.districts.length)
+      // Districts occupy distinct sites (no two districts collapsed onto the same point).
+      const siteKeys = settlement.districts.map((d) => `${d.site[0]},${d.site[1]}`)
+      expect(new Set(siteKeys).size).toBe(settlement.districts.length)
+
+      // Roads reference real district ids and connect every district into one component.
+      const districtIds = new Set(settlement.districts.map((d) => d.id))
+      const adjacency = new Map<string, string[]>()
+      for (const id of districtIds) adjacency.set(id, [])
+      for (const { a, b } of settlement.roads) {
+        expect(districtIds.has(a)).toBe(true)
+        expect(districtIds.has(b)).toBe(true)
+        adjacency.get(a)!.push(b)
+        adjacency.get(b)!.push(a)
+      }
+      const start = settlement.districts[0].id
+      const visited = new Set([start])
+      const queue = [start]
+      while (queue.length > 0) {
+        const current = queue.shift()!
+        for (const n of adjacency.get(current)!) {
+          if (!visited.has(n)) {
+            visited.add(n)
+            queue.push(n)
+          }
+        }
+      }
+      expect(visited.size).toBe(settlement.districts.length)
+
+      expect(settlement.mask.length).toBeGreaterThan(3)
+      expect(settlement.mask[0]).toEqual(settlement.mask[settlement.mask.length - 1])
     }
   })
 })
