@@ -270,9 +270,114 @@ of it, across two rounds** (plan updated accordingly):
    random encounters. Full design detail, file:line citations into
    `shadowdark-rest`, and open questions for each sub-phase are in
    `docs/plan-sites-settlements-mongo.md`.
-3. **Mongo backend + multi-campaign persistence — renumbered to phase 9,
+3. 🔄 **Location Generator expansion (house-rule, not RAW) — in progress,
+   started 2026-07-04, same day as the settlement-map revision.** Confirmed
+   requirement: only 4 dungeon Site Types (Cave/Tomb/Deep tunnels/Ruins)
+   existed despite 20+ distinct overland Points of Interest flavors, a
+   thematic disconnect — most POIs resolved to a mechanically-identical
+   dungeon regardless of flavor text. Two parts: a house-rule d200 overland
+   "Location Generator" POI table (Terrain 2d6 → Feature d200 → conditional
+   sub-tables, plus terrain-keyed Cataclysm d8×7 and Natural Landmark
+   tables), and **5 new site kinds** — Tower, Shrine, Rift, Keep, Camp — on
+   top of the existing 5 (Settlement, Cave, Tomb, Deep Tunnels, Ruins), for
+   10 total. Also confirmed: Village/Town/City/Metropolis POI labels should
+   eventually bias/force the actual Settlement Type roll when reached.
+   **Explicit sequencing decision**: build and verify each of the 5 new
+   kinds in isolation (unit tests + the established temporary-hack-then-
+   revert Playwright pattern), deferring the full POI table rewrite and
+   `generateSiteForHex` dispatch cutover until all 5 exist, to avoid
+   rewiring dispatch five separate times. Confirmed build order: **Tower →
+   Shrine → Rift → Keep → Camp**, checking in with the user after each
+   before starting the next.
+   - ✅ **Tower — done, browser-verified.** `src/engine/generateTower.ts`:
+     level count derived from the Size d6 roll (`towerLevelRangeForSize`,
+     reuses Size rather than inventing a second axis), ground floor = fixed
+     entry hall + guard room, levels above form a strictly linear chain
+     (unlike a dungeon's open graph). Objective on the top level is
+     **hard-coded**, a deliberate exception to the normal highest-roll-wins
+     rule — a linear chain has an "anticlimactic long walk" failure mode a
+     hub-and-spoke or open graph doesn't. `src/hexgrid/TowerMapSvg.tsx`
+     (vertical elevation view), `src/components/hexdetail/TowerSiteView.tsx`,
+     8 tests.
+   - ✅ **Shrine — done, browser-verified.** `src/data/shrineTables.ts`:
+     full d6 Disposition + d6 Approach Feature tables, transcribed verbatim
+     from the user (duplicates allowed, no dedup). `src/engine/generateShrine.ts`:
+     d3 feature count, core feature always the objective (no room topology
+     at all). `src/components/hexdetail/ShrineSiteView.tsx` — no SVG, a
+     scene-card list instead. 3 tests (a 4th, probabilistic, was removed as
+     flaky — small sequential LCG seeds correlate on the first roll; the
+     scripted test already proves the property deterministically).
+   - ✅ **Rift — done, browser-verified.** `src/data/riftTables.ts`: d6
+     Origin, d6 Effect, d4 Stability, all independent, verbatim.
+     `src/engine/generateRift.ts`: exactly 3 rolls, no topology, no
+     monster/NPC population, no objective flag needed.
+     `src/components/hexdetail/RiftSiteView.tsx`: one indivisible
+     `.objective-room` block covering all 3 axes plus an effect-radius
+     note. 3 tests.
+   - 🔄 **Keep — code-complete, unit-tested (5/5), typecheck clean, UI
+     wired; Playwright visual verification still outstanding.** This is
+     where the work paused. `src/engine/keepLayout.ts`: pure radial
+     hub-and-spoke geometry — courtyard hub, named trope rooms (Hall/
+     Barracks/Armory/Lord's Quarters) as first-hop spokes filled in
+     priority order up to the Size-derived room count
+     (`keepRoomCountRangeForSize`; a Small keep may not get all 4 named
+     slots), overflow as generic second-hop rooms round-robin attached to
+     a named parent (never more than 2 hops from the hub). **Real bug
+     found and fixed**: fanning multiple generic rooms sharing one named
+     parent by *global* sibling index repeated the same ±22° offsets after
+     2 siblings, causing an exact overlap for a 3rd/4th sibling — fixed via
+     per-parent sibling-index tracking with an increasing fan step, caught
+     by `keepLayout.test.ts`. `src/engine/roomContent.ts` gained
+     `rollBiasedRoomContent` — a "reroll-toward" bias, not a hard override
+     (roll normally; on a miss, get exactly one more chance at the desired
+     type(s); the second roll's own conditional sub-rolls are only
+     consumed when actually needed) — used for Armory (biased Treasure)
+     and Lord's Quarters (biased NPC/Boss Monster).
+     `src/engine/generateKeep.ts`: `generateKeepSite` (courtyard is always
+     room 1; objective uses the **normal** highest-roll-wins rule, unlike
+     Tower, since Keep's hub-and-spoke shape has no anticlimactic-walk
+     failure mode) and `generateKeepBasement` (optional, GM-choice,
+     ephemeral/re-rollable — just `generateDungeonSite(rng, 'Deep
+     tunnels')`, same pattern as Tavern/Shop, not persisted onto
+     `KeepSite`). `src/components/hexdetail/KeepSiteView.tsx` reuses
+     `DungeonMapSvg` unmodified — that renderer only cares about rects +
+     connections, not the layout algorithm, so no new renderer was needed.
+     Wired into `generateSite.ts`'s `GeneratedSite` union (type-only) and
+     `HexDetailPage.tsx`'s route branch; `generateSiteForHex`'s actual
+     dispatch is still unchanged (Settlement vs. Dungeon only) — correct
+     per the batched-cutover plan, not a gap. **A real bug was found and
+     fixed in the test file itself, not the implementation**: a scripted
+     test used roll=2 on the Room Type d10 table intending "Trap," but
+     roll=2 is actually "Empty" (Trap is roll=3, see `roomTypeForD10` in
+     `dungeonTables.ts`) — that wrong intermediate value desynced the rest
+     of the scripted rng sequence with no type error to catch it. Fixed by
+     correcting the scripted value. Full suite green: `npx tsc -b` clean,
+     223/223 Vitest tests passing. **Remaining before calling Keep done**:
+     the temporary-hack-then-revert Playwright screenshot verification —
+     check the real `StartMapDialog`/`Toolbar` component API first rather
+     than assuming its flow, then force `generateSiteForHex` to return
+     `generateKeepSite`, screenshot, confirm zero console errors, revert.
+   - **Camp — not started.** Flagged by the user as the scope-creep risk of
+     the 5: needs a genuinely new "scatter/zone" renderer (unlike Keep,
+     which reuses `DungeonMapSvg`) — Camp's spec is a flat, unordered
+     cluster (central feature + N peripheral features from a new d6
+     Peripheral Feature table, count driven by Size) with **no topology or
+     connections at all**, which doesn't fit the rect+connections model
+     every other renderer here assumes. Objective defaults to a "Ritual/
+     leader's space" feature if rolled, else the central feature. Full
+     spec already given by the user — nothing to re-ask, just not built.
+   - **POI table cutover — not started, deliberately deferred until all 5
+     kinds above exist.** Full d200 table in `tables.ts`, `generateSiteForHex`
+     dispatch rewritten to route to all 10 site kinds, settlement-type
+     forcing/biasing from POI labels. The exact d200 routing table (which
+     POI feature routes to which of the 10 site kinds) was agreed in
+     conversation but not yet written down anywhere durable — re-confirm
+     with the user when this cutover starts.
+   Full design detail: `docs/plan-sites-settlements-mongo.md`'s "Location
+   Generator expansion" section.
+4. **Mongo backend + multi-campaign persistence — renumbered to phase 10,
    not started.**
-4. **Neighbor-weighted terrain generation — not started, still sequenced
+5. **Neighbor-weighted terrain generation — not started, still sequenced
    last (after Mongo).** New-hex terrain should be influenced by all
    already-revealed neighbors, not just the single predecessor hex the
    book's RAW stepping table uses. Explicit requirement: Ocean must
@@ -415,6 +520,70 @@ src/
   engine/generateSite.ts      generateSiteForHex(poi, rng) dispatcher: routes
                         to generateSettlement vs generateDungeonSite based on
                         SETTLEMENT_LOCATIONS.includes(poi.location).
+                        GeneratedSite's union already includes TowerSite/
+                        ShrineSite/RiftSite/KeepSite (type-only) so the UI
+                        can render them, but dispatch itself doesn't route
+                        to them yet — see "Location Generator expansion"
+                        above; the full cutover is deliberately batched
+                        until Camp also exists.
+  engine/roomContent.ts       rollRoomContent(rng, siteType?) — Room Type d10
+                        + detail sub-table + monster/npc attachment, factored
+                        out of generateDungeon.ts so generateTower.ts/
+                        generateKeep.ts reuse the exact same book-RAW content
+                        table without duplicating logic. Also
+                        rollBiasedRoomContent(rng, biasedTowardTypes, siteType?)
+                        — a "reroll-toward" bias (roll normally, get exactly
+                        one more chance on a miss), not a hard override; used
+                        by Keep's Armory/Lord's Quarters slots.
+  data/shrineTables.ts, riftTables.ts   House-rule tables (verbatim from the
+                        user, not invented): Shrine's d6 Disposition + d6
+                        Approach Feature; Rift's d6 Origin + d6 Effect + d4
+                        Stability.
+  engine/generateTower.ts     generateTowerSite(rng). House-rule site kind.
+                        Level count derives from the Size d6 roll
+                        (towerLevelRangeForSize in dungeonTables.ts, reuses
+                        Size rather than inventing a second axis). Ground
+                        floor = fixed entry hall + guard room; levels above
+                        form a strictly linear chain (not an open graph).
+                        Objective on the top level is hard-coded, NOT the
+                        normal highest-roll-wins rule — a deliberate
+                        exception, since a linear chain has an
+                        "anticlimactic long walk" failure mode a hub-and-
+                        spoke or open graph doesn't.
+  engine/generateShrine.ts    generateShrineSite(rng). House-rule site kind,
+                        no room topology at all. d3 feature count; the core/
+                        shrine-itself feature is always the objective.
+  engine/generateRift.ts      generateRiftSite(rng). House-rule site kind,
+                        no topology, no monster/NPC population. Exactly 3
+                        independent rolls (Origin/Effect/Stability) — there's
+                        only one "thing," the rift itself.
+  engine/keepLayout.ts        computeKeepLayout(namedCount, genericParentIndices).
+                        Pure radial hub-and-spoke geometry for Keep — a
+                        courtyard hub with named trope rooms as first-hop
+                        spokes and generic overflow rooms as second-hop
+                        (never more than 2 hops from the hub). Deliberately
+                        not a reuse of dungeonLayout.ts's BSP tiler; reuses
+                        DungeonMapSvg for rendering unchanged since that
+                        component only cares about rects + connections.
+                        Fans multiple generic rooms sharing one named parent
+                        by PER-PARENT sibling index with an increasing fan
+                        step, not global index — global-index fanning
+                        repeats the same angle offsets after 2 siblings,
+                        causing an exact overlap for a 3rd/4th sibling on
+                        the same parent (a real bug this file's test caught).
+  engine/generateKeep.ts      generateKeepSite(rng) — house-rule site kind.
+                        Courtyard is always room 1; named slots (Hall/
+                        Barracks/Armory/Lord's Quarters) fill first-hop in
+                        priority order up to the Size-derived room count
+                        (keepRoomCountRangeForSize); overflow attaches as
+                        generic second-hop rooms round-robin. Objective uses
+                        the NORMAL highest-roll-wins rule (unlike Tower) —
+                        Keep's hub-and-spoke shape has no anticlimactic-walk
+                        failure mode. generateKeepBasement(rng) is a
+                        separate, optional, GM-choice, ephemeral/re-rollable
+                        generator (not persisted onto KeepSite) that just
+                        calls generateDungeonSite(rng, 'Deep tunnels') — same
+                        pattern as generateTavern/generateShop.
   hexgrid/hexMath.ts    Axial coords, flat-top layout, neighbors, distance,
                         computeVisibleCoords (frontier-based fog-of-war: revealed
                         hexes + their unrevealed neighbors, no map-size bound),
@@ -484,14 +653,28 @@ src/
                         — what HexDetailsPanel used to be, now embedded in
                         every full-view variant instead of a map sidebar),
                         WildernessView (no POI), DungeonSiteView (rooms via
-                        GridLayoutSvg + room list + Reroll Site),
-                        SettlementView (districts via GridLayoutSvg +
+                        DungeonMapSvg + room list + Reroll Site),
+                        SettlementView (districts via SettlementMapSvg +
                         expandable district list with POIs/alignment/
-                        Tavern+Shop generators + Reroll Site).
+                        Tavern+Shop generators + Reroll Site). House-rule
+                        site kinds (see "Location Generator expansion"
+                        above): TowerSiteView (rooms via TowerMapSvg's
+                        vertical elevation view), ShrineSiteView (no SVG —
+                        a scene-card list, Shrine has no room topology),
+                        RiftSiteView (a single indivisible block covering
+                        all 3 axes, Rift has no topology either), KeepSiteView
+                        (reuses DungeonMapSvg unmodified via keepLayout.ts's
+                        hub-and-spoke rects/connections).
+  hexgrid/TowerMapSvg.tsx  Renders Tower's linear level chain as a vertical
+                        elevation view (parallel to DungeonMapSvg/
+                        SettlementMapSvg, but its own renderer since Tower's
+                        shape is a strict chain, not rects+arbitrary
+                        connections in a 2D plane).
   routes/HexDetailPage.tsx  The "/hex/:hexId" route. Auto-dispatches
                         GENERATE_SITE on first visit to a POI hex (idempotent,
                         so revisits are safe), then renders Wilderness/
-                        Dungeon/Settlement view based on hex.site.kind.
+                        Dungeon/Settlement/Tower/Shrine/Rift/Keep view based
+                        on hex.site.kind (Camp not wired yet — not built).
 ```
 
 Routing: `react-router-dom` v6, `BrowserRouter` in `main.tsx`. Two routes
@@ -601,9 +784,27 @@ illustrated-style city map after the first Voronoi-only version was
 rejected as looking like an abstract diagram) — see Status above — are all
 built and browser-verified; nothing there is known-broken or
 half-finished. Both dungeons and settlements now have real illustrated-map
-visual treatments (no more visual-fidelity asymmetry between them). Agreed
-build order for what's left (see Status above and the plan file for
-design detail):
+visual treatments (no more visual-fidelity asymmetry between them).
+
+**Currently in progress: the Location Generator expansion (see Status
+item 3 above).** Tower/Shrine/Rift are done and browser-verified. Keep is
+code-complete and unit-tested (223/223 Vitest tests passing, typecheck
+clean, UI wired into `HexDetailPage.tsx`) but still needs its Playwright
+visual verification — check the real `StartMapDialog`/`Toolbar` component
+API first (an earlier attempt this session assumed a flow that was never
+confirmed against the actual components), then run the established
+temporary-hack-then-revert pattern before reporting Keep done. After that,
+check in with the user before starting **Camp** — the scope-creep risk of
+the 5, since it needs a genuinely new "scatter/zone" renderer (a flat,
+unordered central-feature + N-peripheral-features cluster with no topology,
+unlike every other renderer here which assumes rects + connections). Once
+all 5 kinds exist, the full d200 POI table + `generateSiteForHex` dispatch
+cutover (routing all 10 site kinds, plus settlement-type forcing/biasing
+from POI labels) is next — see `docs/plan-sites-settlements-mongo.md`'s
+"Location Generator expansion" section for full detail.
+
+Agreed build order after the Location Generator expansion finishes (see
+Status above and the plan file for design detail):
 1. **Settlement NPC population** (reuses the dungeon phase's Monster/NPC
    engine).
 2. **Node/Express + MongoDB backend for multi-campaign persistence.** The
@@ -619,7 +820,10 @@ design detail):
 A few Phase-2-adjacent items intentionally deferred rather than built:
 a "Tomb" random-encounter table doesn't exist in the book, so dungeons of
 that type fall back to the Ruins table (`SITE_TYPE_TO_ENCOUNTER_KEY`); the
-book's Tavern d100 encounter table isn't wired to any UI trigger yet.
+book's Tavern d100 encounter table isn't wired to any UI trigger yet. The 5
+new house-rule site kinds (Tower/Shrine/Rift/Keep/Camp) also have no random
+encounter tables of their own yet — out of scope for now, not raised by
+the user.
 
 Ideas that came up but were intentionally out of scope for this plan:
 - No way to export/share a generated map (image, JSON download, etc.)
@@ -627,5 +831,5 @@ Ideas that came up but were intentionally out of scope for this plan:
 - NPC name tables (book pp. 128-129, PDF pp. 132-133) were read during
   earlier planning but not asked for at the time — **superseded**: NPC
   population for dungeons/settlements is now confirmed required scope
-  (items 2 and 4 above), so these tables are relevant again whenever that
-  work starts.
+  (item 1 above), so these tables are relevant again whenever that work
+  starts.
