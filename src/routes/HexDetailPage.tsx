@@ -8,6 +8,7 @@ import { TowerSiteView } from '../components/hexdetail/TowerSiteView'
 import { ShrineSiteView } from '../components/hexdetail/ShrineSiteView'
 import { RiftSiteView } from '../components/hexdetail/RiftSiteView'
 import { KeepSiteView } from '../components/hexdetail/KeepSiteView'
+import { CampSiteView } from '../components/hexdetail/CampSiteView'
 
 export function HexDetailPage() {
   const { hexId } = useParams<{ hexId: string }>()
@@ -46,6 +47,8 @@ export function HexDetailPage() {
         <RiftSiteView hex={hex} site={hex.site} />
       ) : hex.site?.kind === 'keep' ? (
         <KeepSiteView hex={hex} site={hex.site} />
+      ) : hex.site?.kind === 'camp' ? (
+        <CampSiteView hex={hex} site={hex.site} />
       ) : (
         <p>Generating site…</p>
       )}

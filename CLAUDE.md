@@ -314,9 +314,7 @@ of it, across two rounds** (plan updated accordingly):
      `src/components/hexdetail/RiftSiteView.tsx`: one indivisible
      `.objective-room` block covering all 3 axes plus an effect-radius
      note. 3 tests.
-   - 🔄 **Keep — code-complete, unit-tested (5/5), typecheck clean, UI
-     wired; Playwright visual verification still outstanding.** This is
-     where the work paused. `src/engine/keepLayout.ts`: pure radial
+   - ✅ **Keep — done, browser-verified.** `src/engine/keepLayout.ts`: pure radial
      hub-and-spoke geometry — courtyard hub, named trope rooms (Hall/
      Barracks/Armory/Lord's Quarters) as first-hop spokes filled in
      priority order up to the Size-derived room count
@@ -352,27 +350,63 @@ of it, across two rounds** (plan updated accordingly):
      `dungeonTables.ts`) — that wrong intermediate value desynced the rest
      of the scripted rng sequence with no type error to catch it. Fixed by
      correcting the scripted value. Full suite green: `npx tsc -b` clean,
-     223/223 Vitest tests passing. **Remaining before calling Keep done**:
-     the temporary-hack-then-revert Playwright screenshot verification —
-     check the real `StartMapDialog`/`Toolbar` component API first rather
-     than assuming its flow, then force `generateSiteForHex` to return
-     `generateKeepSite`, screenshot, confirm zero console errors, revert.
-   - **Camp — not started.** Flagged by the user as the scope-creep risk of
-     the 5: needs a genuinely new "scatter/zone" renderer (unlike Keep,
-     which reuses `DungeonMapSvg`) — Camp's spec is a flat, unordered
-     cluster (central feature + N peripheral features from a new d6
-     Peripheral Feature table, count driven by Size) with **no topology or
-     connections at all**, which doesn't fit the rect+connections model
-     every other renderer here assumes. Objective defaults to a "Ritual/
-     leader's space" feature if rolled, else the central feature. Full
-     spec already given by the user — nothing to re-ask, just not built.
-   - **POI table cutover — not started, deliberately deferred until all 5
-     kinds above exist.** Full d200 table in `tables.ts`, `generateSiteForHex`
-     dispatch rewritten to route to all 10 site kinds, settlement-type
-     forcing/biasing from POI labels. The exact d200 routing table (which
-     POI feature routes to which of the 10 site kinds) was agreed in
-     conversation but not yet written down anywhere durable — re-confirm
-     with the user when this cutover starts.
+     223/223 Vitest tests passing. Browser-verified via the
+     temporary-hack-then-revert Playwright pattern (`localStorage` seeded
+     directly with a hex carrying a POI, bypassing the 1-in-6 book-RAW POI
+     roll): a Small keep rendered as a courtyard hub (objective star) with
+     3 named spokes (Hall/Armory/Barracks) connected by visible corridors,
+     no overlaps, correct room-type coloring; zero console errors. Hack
+     reverted immediately after, confirmed via `git diff` showing zero
+     delta from the committed state.
+   - ✅ **Camp — done, browser-verified.** Flagged in advance by the user as
+     the scope-creep risk of the 5, since it needs a genuinely new
+     "scatter/zone" renderer (unlike Keep, which reuses `DungeonMapSvg`).
+     `src/data/campTables.ts`: `campFeatureCountRangeForSize` (Size → TOTAL
+     feature count including the central one — Camp's table was given
+     without Keep's explicit hub-exclusion, so `peripheralCount =
+     totalFeatureCount - 1`) and a d6 Peripheral Feature table (Sleeping
+     area/Supply cache/Watch post/Mounts pen/Prisoner pit/Ritual-leader's-
+     space), verbatim from the user. `src/engine/campLayout.ts` — a third
+     distinct layout shape (after dungeons' BSP tiling/Keep's hub-and-spoke
+     and Tower's linear chain): a central circle plus peripheral circles at
+     evenly-spaced angles with deterministic alternating radius jitter (not
+     rng-driven, same reproducibility approach as `keepLayout.ts`'s fan
+     angles), **no connections/edges of any kind**, by design. `src/engine/generateCamp.ts`:
+     no monster/NPC engine attachment (threats are flavor text embedded
+     directly in the table, same choice as Shrine), no Danger Level roll
+     (not specified, same as Shrine/Rift), objective is a soft fallback —
+     "Ritual/leader's space" if rolled (first occurrence), else the central
+     feature. The central feature's specific identity (campfire/war-tent/
+     totem) is a generic placeholder — no formal table for it was given,
+     only illustrative examples; real flavor is deferred to the POI-table
+     cutover. New `src/hexgrid/CampMapSvg.tsx` — plain circles, no
+     connecting lines drawn at all, deliberately simpler than
+     `DungeonMapSvg`/`SettlementMapSvg` (flat background, no patterns)
+     given the scope-creep flag; introduces a new `data-feature-id`
+     Playwright-targeting attribute (third convention alongside
+     `data-room-id`/`data-district-id`). 9 new tests (5 layout: correct
+     counts, non-negative coordinates, no circle-overlap, no `connections`
+     property at all; 4 generation: scripted objective-placement cases +
+     seeded structural invariants across 6 seeds). Full suite green:
+     `npx tsc -b`/`npm run build` clean, 232/232 Vitest tests passing.
+     Browser-verified via the same temporary-hack-then-revert
+     `localStorage`-seeding pattern as Keep: a Large camp rendered 6
+     peripheral circles at irregular distances around a central circle,
+     correctly colored by feature type, no connecting lines, objective star
+     correctly on the central feature (no Ritual/leader's space rolled that
+     generation); zero console errors. Hack reverted immediately after,
+     confirmed via `git diff` showing zero delta from the committed state.
+   - **POI table cutover — not started, now unblocked (all 5 kinds above
+     are done).** Full d200 table + full routing table (which POI feature
+     routes to which of the 10 site kinds, with forced Site/Settlement Type
+     and flavor tags) is now locked and durably written down in
+     `docs/plan-sites-settlements-mongo.md`'s "Location Generator
+     expansion" → "Locked table content" section — that section is the
+     single source of truth for this data; if it's ever revised, edit it
+     there first. (An earlier attempt to implement this lost the table
+     content because it had only ever been pasted into chat, not saved to
+     a file — recovered once by mining the raw session transcript; don't
+     let that happen again.)
    Full design detail: `docs/plan-sites-settlements-mongo.md`'s "Location
    Generator expansion" section.
 4. **Mongo backend + multi-campaign persistence — renumbered to phase 10,
@@ -521,11 +555,12 @@ src/
                         to generateSettlement vs generateDungeonSite based on
                         SETTLEMENT_LOCATIONS.includes(poi.location).
                         GeneratedSite's union already includes TowerSite/
-                        ShrineSite/RiftSite/KeepSite (type-only) so the UI
-                        can render them, but dispatch itself doesn't route
-                        to them yet — see "Location Generator expansion"
-                        above; the full cutover is deliberately batched
-                        until Camp also exists.
+                        ShrineSite/RiftSite/KeepSite/CampSite (type-only) so
+                        the UI can render them, but dispatch itself doesn't
+                        route to them yet — see "Location Generator
+                        expansion" above; the full cutover is deliberately
+                        batched (all 5 kinds are done now, so this is the
+                        only remaining piece of that phase).
   engine/roomContent.ts       rollRoomContent(rng, siteType?) — Room Type d10
                         + detail sub-table + monster/npc attachment, factored
                         out of generateDungeon.ts so generateTower.ts/
@@ -584,6 +619,34 @@ src/
                         generator (not persisted onto KeepSite) that just
                         calls generateDungeonSite(rng, 'Deep tunnels') — same
                         pattern as generateTavern/generateShop.
+  data/campTables.ts    House-rule tables (verbatim from the user):
+                        campFeatureCountRangeForSize (Size -> TOTAL feature
+                        count including the central feature — unlike Keep's
+                        explicit courtyard exclusion) and a d6 Peripheral
+                        Feature table (Sleeping area/Supply cache/Watch
+                        post/Mounts pen/Prisoner pit/Ritual-leader's-space).
+  engine/campLayout.ts  computeCampLayout(peripheralCount). The THIRD
+                        distinct layout shape in this project (after
+                        dungeons' BSP tiling/Keep's hub-and-spoke rects and
+                        Tower's linear chain): a central circle plus
+                        peripheral circles at evenly-spaced angles with
+                        deterministic alternating radius jitter (not
+                        rng-driven — same reproducibility approach as
+                        keepLayout.ts's fan angles). NO connections/edges of
+                        any kind, by design — Camp has zero topology.
+  engine/generateCamp.ts  generateCampSite(rng) — house-rule site kind, the
+                        scope-creep risk of the 5 (flagged by the user in
+                        advance). No monster/NPC engine attachment (threats
+                        are flavor text embedded directly in the Peripheral
+                        Feature table, same choice as Shrine); no Danger
+                        Level roll (not specified, same as Shrine/Rift).
+                        Objective is a soft fallback: "Ritual/leader's
+                        space" if rolled (first occurrence), else the
+                        central feature. The central feature's specific
+                        identity (campfire/war-tent/totem) is a generic
+                        placeholder — no formal table for it was given,
+                        only illustrative examples; real flavor deferred to
+                        the POI-table cutover.
   hexgrid/hexMath.ts    Axial coords, flat-top layout, neighbors, distance,
                         computeVisibleCoords (frontier-based fog-of-war: revealed
                         hexes + their unrevealed neighbors, no map-size bound),
@@ -664,17 +727,32 @@ src/
                         RiftSiteView (a single indivisible block covering
                         all 3 axes, Rift has no topology either), KeepSiteView
                         (reuses DungeonMapSvg unmodified via keepLayout.ts's
-                        hub-and-spoke rects/connections).
+                        hub-and-spoke rects/connections), CampSiteView (via
+                        CampMapSvg's scatter/zone rendering, no connections
+                        at all).
   hexgrid/TowerMapSvg.tsx  Renders Tower's linear level chain as a vertical
                         elevation view (parallel to DungeonMapSvg/
                         SettlementMapSvg, but its own renderer since Tower's
                         shape is a strict chain, not rects+arbitrary
                         connections in a 2D plane).
+  hexgrid/CampMapSvg.tsx  Renders Camp's scatter/zone layout (campLayout.ts)
+                        as plain circles at their computed positions with NO
+                        connecting lines drawn at all — the third distinct
+                        renderer in this project, deliberately simpler than
+                        DungeonMapSvg/SettlementMapSvg (flat background, no
+                        patterns) given Camp's confirmed scope-creep risk.
+                        Uses a new data-feature-id Playwright-targeting
+                        attribute (a third convention alongside
+                        data-room-id/data-district-id).
   routes/HexDetailPage.tsx  The "/hex/:hexId" route. Auto-dispatches
                         GENERATE_SITE on first visit to a POI hex (idempotent,
                         so revisits are safe), then renders Wilderness/
-                        Dungeon/Settlement/Tower/Shrine/Rift/Keep view based
-                        on hex.site.kind (Camp not wired yet — not built).
+                        Dungeon/Settlement/Tower/Shrine/Rift/Keep/Camp view
+                        based on hex.site.kind — all 10 site kinds now have a
+                        UI, though generateSiteForHex's dispatch still only
+                        routes to Settlement/Dungeon (see "Location
+                        Generator expansion" above; the POI table cutover is
+                        the only remaining piece).
 ```
 
 Routing: `react-router-dom` v6, `BrowserRouter` in `main.tsx`. Two routes
@@ -786,22 +864,18 @@ built and browser-verified; nothing there is known-broken or
 half-finished. Both dungeons and settlements now have real illustrated-map
 visual treatments (no more visual-fidelity asymmetry between them).
 
-**Currently in progress: the Location Generator expansion (see Status
-item 3 above).** Tower/Shrine/Rift are done and browser-verified. Keep is
-code-complete and unit-tested (223/223 Vitest tests passing, typecheck
-clean, UI wired into `HexDetailPage.tsx`) but still needs its Playwright
-visual verification — check the real `StartMapDialog`/`Toolbar` component
-API first (an earlier attempt this session assumed a flow that was never
-confirmed against the actual components), then run the established
-temporary-hack-then-revert pattern before reporting Keep done. After that,
-check in with the user before starting **Camp** — the scope-creep risk of
-the 5, since it needs a genuinely new "scatter/zone" renderer (a flat,
-unordered central-feature + N-peripheral-features cluster with no topology,
-unlike every other renderer here which assumes rects + connections). Once
-all 5 kinds exist, the full d200 POI table + `generateSiteForHex` dispatch
-cutover (routing all 10 site kinds, plus settlement-type forcing/biasing
-from POI labels) is next — see `docs/plan-sites-settlements-mongo.md`'s
-"Location Generator expansion" section for full detail.
+**Location Generator expansion (see Status item 3 above): all 5 new site
+kinds — Tower, Shrine, Rift, Keep, Camp — are done and browser-verified.**
+Camp (the scope-creep risk of the 5, needing a genuinely new "scatter/zone"
+renderer) shipped without incident: a flat, unordered central-feature +
+N-peripheral-features cluster with no topology, rendered as plain circles
+with zero connecting lines. **Only remaining piece of this phase**: the
+full d200 POI table + `generateSiteForHex` dispatch cutover (routing all 10
+site kinds, plus settlement-type forcing/biasing from POI labels) — see
+`docs/plan-sites-settlements-mongo.md`'s "Location Generator expansion"
+section for full detail, including the note that the exact d200 routing
+table was agreed in conversation but never written down durably, so
+re-confirm it with the user before implementing.
 
 Agreed build order after the Location Generator expansion finishes (see
 Status above and the plan file for design detail):
