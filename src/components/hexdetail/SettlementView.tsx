@@ -30,6 +30,7 @@ export function SettlementView({ hex, site }: { hex: Hex; site: Settlement }) {
     id: d.id,
     site: { x: d.site[0], y: d.site[1] },
     polygon: d.polygon.map(([x, y]) => ({ x, y })),
+    buildings: d.buildings,
     color: DISTRICT_TYPE_COLORS[d.districtType],
     label: d.isSeatOfGovernment ? '★' : String(d.index + 1),
     highlighted: d.isSeatOfGovernment,

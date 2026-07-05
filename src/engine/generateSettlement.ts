@@ -9,13 +9,23 @@ import {
   type DistrictType,
   type Alignment,
 } from '../data/settlementTables'
-import { buildCityMask, buildRoadEdges, buildVoronoiDistricts, sampleDistrictSites, type Point, type RoadEdge } from './settlementLayout'
+import {
+  buildCityMask,
+  buildRoadEdges,
+  buildVoronoiDistricts,
+  generateBuildingFootprints,
+  sampleDistrictSites,
+  type BuildingFootprint,
+  type Point,
+  type RoadEdge,
+} from './settlementLayout'
 
 export type District = {
   id: string
   index: number
   site: Point
   polygon: Point[]
+  buildings: BuildingFootprint[]
   districtType: DistrictType
   districtTypeRoll: number
   alignment: Alignment
@@ -56,6 +66,7 @@ export function generateSettlement(rng: Rng = Math.random, overrideSettlementTyp
       index,
       site,
       polygon: polygons[index],
+      buildings: [],
       districtType,
       districtTypeRoll,
       alignment,
@@ -74,6 +85,13 @@ export function generateSettlement(rng: Rng = Math.random, overrideSettlementTyp
 
   const roadEdges: RoadEdge[] = buildRoadEdges(sites, seatIndex)
   const roads = roadEdges.map(({ a, b, kind }) => ({ a: `district-${a}`, b: `district-${b}`, kind }))
+
+  // Buildings are generated after roads are known (they need to avoid them) — a separate pass
+  // over the already-built districts, rather than folding into the content-roll loop above.
+  const roadSegments: [Point, Point][] = roadEdges.map(({ a, b }) => [sites[a], sites[b]])
+  for (let i = 0; i < districts.length; i++) {
+    districts[i] = { ...districts[i], buildings: generateBuildingFootprints(districts[i].polygon, mask, roadSegments, rng) }
+  }
 
   return { kind: 'settlement', settlementType: spec.type, districts, mask, roads }
 }

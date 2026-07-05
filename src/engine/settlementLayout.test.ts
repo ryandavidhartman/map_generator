@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { buildCityMask, buildRoadEdges, buildVoronoiDistricts, sampleDistrictSites, type Point } from './settlementLayout'
+import {
+  buildCityMask,
+  buildRoadEdges,
+  buildVoronoiDistricts,
+  generateBuildingFootprints,
+  sampleDistrictSites,
+  type Point,
+} from './settlementLayout'
 
 // Deterministic seeded PRNG (LCG) — matches this project's deterministic-tests-only convention
 // (see gridLayout.test.ts). Rejection sampling here has a variable, non-scriptable rng call
@@ -129,5 +136,59 @@ describe('buildRoadEdges', () => {
     const edges = buildRoadEdges(sites, 0)
     const seatMainEdges = edges.filter((e) => e.kind === 'main' && (e.a === 0 || e.b === 0))
     expect(seatMainEdges.length).toBeGreaterThan(0)
+  })
+})
+
+describe('generateBuildingFootprints', () => {
+  function setupFor(count: number, seed: number) {
+    const mask = buildCityMask(count, seededRng(seed))
+    const sites = sampleDistrictSites(count, mask, seededRng(seed + 1))
+    const districts = buildVoronoiDistricts(sites, mask)
+    const edges = buildRoadEdges(sites, 0)
+    const roadSegments: [Point, Point][] = edges.map(({ a, b }) => [sites[a], sites[b]])
+    return { mask, districts, roadSegments }
+  }
+
+  it('places at least some footprints in a reasonably sized district', () => {
+    const { mask, districts, roadSegments } = setupFor(4, 1)
+    const footprints = generateBuildingFootprints(districts[0], mask, roadSegments, seededRng(2))
+    expect(footprints.length).toBeGreaterThan(0)
+  })
+
+  it('every footprint sits inside its district polygon', () => {
+    const { mask, districts, roadSegments } = setupFor(6, 3)
+    for (let i = 0; i < districts.length; i++) {
+      const footprints = generateBuildingFootprints(districts[i], mask, roadSegments, seededRng(i + 10))
+      for (const f of footprints) {
+        const xs = districts[i].map((p) => p[0])
+        const ys = districts[i].map((p) => p[1])
+        expect(f.x).toBeGreaterThanOrEqual(Math.min(...xs) - 1e-6)
+        expect(f.x).toBeLessThanOrEqual(Math.max(...xs) + 1e-6)
+        expect(f.y).toBeGreaterThanOrEqual(Math.min(...ys) - 1e-6)
+        expect(f.y).toBeLessThanOrEqual(Math.max(...ys) + 1e-6)
+      }
+    }
+  })
+
+  it('no two footprints in the same district overlap', () => {
+    const { mask, districts, roadSegments } = setupFor(8, 5)
+    for (let i = 0; i < districts.length; i++) {
+      const footprints = generateBuildingFootprints(districts[i], mask, roadSegments, seededRng(i + 20))
+      for (let a = 0; a < footprints.length; a++) {
+        for (let b = a + 1; b < footprints.length; b++) {
+          const halfDiagA = Math.hypot(footprints[a].width, footprints[a].height) / 2
+          const halfDiagB = Math.hypot(footprints[b].width, footprints[b].height) / 2
+          const dist = Math.hypot(footprints[a].x - footprints[b].x, footprints[a].y - footprints[b].y)
+          expect(dist).toBeGreaterThanOrEqual(halfDiagA + halfDiagB - 1e-6)
+        }
+      }
+    }
+  })
+
+  it('produces both buildings and occasional parks across many footprints', () => {
+    const { mask, districts, roadSegments } = setupFor(8, 7)
+    const allFootprints = districts.flatMap((d) => generateBuildingFootprints(d, mask, roadSegments, seededRng(42)))
+    const kinds = new Set(allFootprints.map((f) => f.kind))
+    expect(kinds.has('building')).toBe(true)
   })
 })

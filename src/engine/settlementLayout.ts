@@ -3,15 +3,30 @@ import type { Rng } from './dice'
 import { intersectPolygons, type Polygon as ClipPolygon } from './polygonClip'
 
 // Real settlement layout: an organic jittered "city mask" boundary, districts as Voronoi
-// cells clipped to that mask, and a curved road network. Ported as an algorithm idea (not
-// code — different stack) from a sibling project's SettlementServer.scala — see
-// docs/plan-sites-settlements-mongo.md's "Real settlement maps" section for source citations
-// and the scope this deliberately dropped (building footprints/plazas, and a separate
-// union-of-districts-then-buffer outline step — the mask itself already IS the organic
-// outline, since every district is clipped to it, so no extra union/buffer pass is needed).
+// cells clipped to that mask, a curved road network, and building/park footprints scattered
+// within each district. Ported as an algorithm idea (not code — different stack) from a
+// sibling project's SettlementServer.scala — see docs/plan-sites-settlements-mongo.md's "Real
+// settlement maps" section for source citations. Building generation was initially deferred
+// (v1 shipped districts as flat-colored polygons with no buildings/streets visible — a real
+// rendering bug hid the roads entirely, and the flat districts alone read as an abstract
+// diagram, not a city map); this revision adds it back in, scoped to plain rejection-sampled
+// rectangles with distance-based road/wall avoidance (no polygon buffering/offset library —
+// point-to-segment distance checks do the same job here without a new dependency).
 
 export type Point = [number, number]
 export type RoadEdge = { a: number; b: number; kind: 'main' | 'minor' }
+export type BuildingFootprint = {
+  kind: 'building' | 'park'
+  x: number
+  y: number
+  width: number
+  height: number
+  rotation: number
+  // Index into a small fixed color palette (defined by the renderer) — rolled at generation
+  // time so a building's color is deterministic/re-rollable like everything else, not a
+  // render-time Math.random() pick.
+  colorIndex: number
+}
 
 const MASK_SAMPLES = 20
 const MASK_JITTER_MIN = 0.7
@@ -171,4 +186,82 @@ export function buildRoadEdges(sites: Point[], seatIndex: number): RoadEdge[] {
   }
 
   return edges
+}
+
+const BUILDING_MIN_SIZE = 1.0
+const BUILDING_MAX_SIZE = 2.2
+const BUILDING_GAP = 0.3
+const ROAD_CLEARANCE = 1.0
+const WALL_CLEARANCE = 1.5
+const PARK_CHANCE = 0.1
+const BUILDING_COLOR_COUNT = 4
+
+function pointToSegmentDistance(p: Point, a: Point, b: Point): number {
+  const [px, py] = p
+  const [ax, ay] = a
+  const [bx, by] = b
+  const dx = bx - ax
+  const dy = by - ay
+  const lengthSquared = dx * dx + dy * dy
+  if (lengthSquared === 0) return distance(p, a)
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared))
+  return distance(p, [ax + t * dx, ay + t * dy])
+}
+
+function distanceToPolygonBoundary(point: Point, polygon: Point[]): number {
+  let min = Infinity
+  for (let i = 0; i < polygon.length - 1; i++) {
+    min = Math.min(min, pointToSegmentDistance(point, polygon[i], polygon[i + 1]))
+  }
+  return min
+}
+
+function distanceToNearestSegment(point: Point, segments: [Point, Point][]): number {
+  if (segments.length === 0) return Infinity
+  return Math.min(...segments.map(([a, b]) => pointToSegmentDistance(point, a, b)))
+}
+
+// Rejection-sampled building (and occasional park) footprints inside one district's polygon.
+// Deliberately density-based, not count-based: runs a bounded number of attempts proportional
+// to the district's area and keeps whatever fits, rather than promising an exact count and
+// silently falling short — the specific bug shadowdark-rest's own equivalent feature has,
+// per its own AGENTS.md (capped-attempt rejection sampler, no fallback/relaxation pass).
+// Buildings avoid the outer wall (mask boundary) and roads by a minimum clearance distance —
+// approximated via point-to-segment distance rather than true polygon buffering/offsetting,
+// which would need a geometry library this project doesn't otherwise need.
+export function generateBuildingFootprints(
+  districtPolygon: Point[],
+  mask: Point[],
+  roadSegments: [Point, Point][],
+  rng: Rng = Math.random,
+): BuildingFootprint[] {
+  const [minX, minY, maxX, maxY] = boundingBox(districtPolygon)
+  const area = polygonArea(districtPolygon)
+  const maxAttempts = Math.max(24, Math.round(area / 2.5))
+  const footprints: BuildingFootprint[] = []
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const candidate: Point = [minX + rng() * (maxX - minX), minY + rng() * (maxY - minY)]
+    if (!pointInPolygon(candidate, districtPolygon)) continue
+    if (distanceToPolygonBoundary(candidate, mask) < WALL_CLEARANCE) continue
+    if (distanceToNearestSegment(candidate, roadSegments) < ROAD_CLEARANCE) continue
+
+    const width = BUILDING_MIN_SIZE + rng() * (BUILDING_MAX_SIZE - BUILDING_MIN_SIZE)
+    const height = BUILDING_MIN_SIZE + rng() * (BUILDING_MAX_SIZE - BUILDING_MIN_SIZE)
+    const halfDiag = Math.hypot(width, height) / 2
+
+    const overlaps = footprints.some((f) => {
+      const otherHalfDiag = Math.hypot(f.width, f.height) / 2
+      return distance([f.x, f.y], candidate) < halfDiag + otherHalfDiag + BUILDING_GAP
+    })
+    if (overlaps) continue
+
+    const rotation = rng() * Math.PI * 2
+    const isPark = rng() < PARK_CHANCE
+    const colorIndex = Math.floor(rng() * BUILDING_COLOR_COUNT)
+
+    footprints.push({ kind: isPark ? 'park' : 'building', x: candidate[0], y: candidate[1], width, height, rotation, colorIndex })
+  }
+
+  return footprints
 }

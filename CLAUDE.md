@@ -104,6 +104,46 @@ of it, across two rounds** (plan updated accordingly):
       get real visual polish together. No schema change needed later:
       `Room.rect`/`DungeonSite.connections` already carry what a richer
       renderer would need.
+      **Revisited later (2026-07-04), after settlements got their own
+      visual rebuild** — the user asked for a matching dungeon upgrade,
+      pointing to a hand-drawn cave-map reference image. Confirmed scope:
+      Cave/Deep tunnels get organic cavern rendering; Tomb/Ruins keep
+      rectangular rooms with a smaller polish pass (thicker walls, brick
+      texture) — a built tomb shouldn't look like a natural cave. Purely a
+      rendering-layer feature: `dungeonLayout.ts`/`generateDungeonSite`
+      untouched; new `src/engine/caveRenderShapes.ts` derives each room's
+      organic blob shape *deterministically from its existing `rect`* via
+      a seeded hash (`seedForRect` → `generateBlobShape` →
+      `blobToPolygon`), so no new generated/persisted data and no change
+      to the generation rng stream. Also found and fixed the actual root
+      cause of "corridors barely visible" from day one: rectangular rooms
+      tile edge-to-edge with zero gap, so a corridor line between two
+      touching rooms had nowhere visible to go regardless of styling —
+      fixed by insetting rectangular rooms from their true rect bounds
+      (cave blobs didn't need this; a blob's radius is already smaller
+      than its rect). `DungeonMapSvg.tsx` rewritten: three SVG `<pattern>`
+      defs (grid background, crosshatch for caves, brick for built rooms —
+      no raster assets), rooms as wall-band + floor double layers (blob
+      polygons or rects), corridors as the same double-layer treatment
+      instead of a bare line. 8 new tests in `caveRenderShapes.test.ts`,
+      all 190 Vitest tests pass, build clean. Browser + screenshot
+      verified both styles: Deep tunnels rendered organic blob rooms with
+      visible crosshatched walls/corridors; Ruins rendered rectangular
+      rooms with visible brick walls *and* now-visible corridor bands;
+      room click-to-expand works in both; zero console errors.
+      **Same-day follow-up**: user flagged that corridors, while now
+      visible, were still perfectly straight — several converging on one
+      room read as a network diagram, not a cave. Fixed for cave style
+      only (Tomb/Ruins correctly keep straight halls):
+      `caveRenderShapes.ts` gained `generateOrganicCorridorWaypoints`
+      (2 deterministically-jittered perpendicular waypoints) +
+      `smoothPathData` (quadratic-bezier-through-points construction) +
+      `seedForConnection` (order-independent XOR of two rooms' seeds).
+      `DungeonMapSvg.tsx`'s cave corridors now render as two stacked
+      native SVG `<path>` strokes along that winding centerline instead
+      of a straight polygon ribbon. 10 new tests, all 200 Vitest tests
+      pass. Browser-verified: a 12-room Deep tunnels dungeon now shows
+      visibly curved, winding corridors; zero console errors.
    b. ✅ **Dungeon monster/NPC population — done.** Scope clarified before
       writing code: name + flavor only, no combat stats (real stat blocks
       are a confirmed **future MongoDB integration**, sequenced after the
@@ -186,22 +226,44 @@ of it, across two rounds** (plan updated accordingly):
       `<path>`, no curve library needed — just one computed control point
       per edge). `GridLayoutSvg.tsx` is now settlement-districts-free,
       dungeons/districts each have their own dedicated renderer.
-      **Deliberately deferred**, matching phase 5's precedent: building
-      footprints/plazas — shadowdark-rest's own docs flag its version as
-      a buggy, capped-attempt rejection sampler that silently underfills;
-      not worth porting as-is, addable later with no schema change.
+      Building footprints/plazas were initially deferred here (matching
+      phase 5's precedent), then **un-deferred the same day** — see next
+      paragraph.
       New `settlementLayout.test.ts` (11 tests) + `generateSettlement.test.ts`
       rewritten from exact-scripted-rng to seeded+structural (rejection
       sampling has a variable rng call count, same shift `gridLayout.test.ts`
-      already established). All 189 Vitest tests pass, `npx tsc
-      -b`/`npm run build` clean (bundle ~332KB, ~110KB gzipped). Browser
-      + screenshot verified via Playwright: a 4-district Town rendered 4
-      real polygons with 4 distinct vertex counts (8/9/10/11, confirming
-      genuine Voronoi irregularity) connected by 5 curved roads; a
-      6-district city screenshot confirmed an organic non-circular
-      boundary with districts tiling it correctly; district
-      click-to-expand and Reroll Site both still work; zero console
-      errors.
+      already established).
+      **Revision, same day:** the user reviewed a live 3-district Village
+      and rejected it — flat solid-color pie-wedge districts read as an
+      abstract diagram, not a city. Two causes: a real bug (roads drawn
+      *under* the fully-opaque districts, nearly invisible — the same
+      z-order mistake as the phase 5 dungeon-corridor issue, never
+      revisited) and a real scope gap (no building/street texture without
+      the deferred footprint feature). User supplied a concrete reference
+      image ([thealexandrian.net](https://www.thealexandrian.net/images/20180723c.jpg))
+      — a painted map with building blocks, streets, parks, and a towered
+      wall; confirmed a flat/stylized SVG version in that visual language
+      (not painted textures — ruled out as much bigger scope, would need
+      a texture-asset pipeline) as the right target, and to finish this
+      as a phase 7 revision before moving to phase (d). Shipped:
+      `settlementLayout.ts` gained `generateBuildingFootprints` (density-
+      based rejection sampling — bounded attempts proportional to area,
+      keeps whatever fits rather than promising an exact count, avoiding
+      shadowdark-rest's own documented bug; distance-based road/wall
+      avoidance via point-to-segment checks, no new geometry dependency).
+      `SettlementMapSvg.tsx` fully rewritten with corrected z-order:
+      ground → faint per-district color wash (orientation only) →
+      streets (thick, drawn *before* buildings) → building rects
+      (rotated, cycling a 4-color terracotta palette) + park ellipses
+      (with tree-dot markers) → invisible click-hit-regions → wall +
+      towers (circles at every 3rd mask vertex) → labels last, with a
+      readability stroke halo. All 182 Vitest tests pass, `npx tsc
+      -b`/`npm run build` clean (bundle ~334KB, ~111KB gzipped). Browser
+      + screenshot verified via Playwright at both scales: an 8-district
+      Metropolis rendered 135 buildings + 21 parks across districts with
+      14 visible streets; a 3-district Village screenshot confirmed the
+      style holds at small scale; district click-to-expand and Reroll
+      Site both still work; zero console errors.
    d. **Settlement NPC population — not started.** Reuses (b)'s Monster/NPC
       engine to populate district POIs with named NPCs.
    Confirmed scope: dungeons + settlements only for now, not overland
@@ -292,6 +354,20 @@ src/
                         geometric adjacency (shared boundary segment) between
                         leaf rects, not a parent tree — a room can connect to
                         more than one neighbor.
+  engine/caveRenderShapes.ts   Pure, deterministic rendering-only geometry
+                        for DungeonMapSvg.tsx's Cave/Deep tunnels style —
+                        NOT part of the generation engine (dungeonLayout.ts
+                        is untouched). seedForRect(rect) hashes a room's
+                        existing rect into a seed; generateBlobShape(seed)
+                        turns that into a reusable "wobble" (angles + jittered
+                        radius factors); blobToPolygon(center, baseRadius,
+                        shape, extraRadius) renders the wobble to a closed
+                        polygon at a given radius, so calling it at
+                        extraRadius=0 (floor) and extraRadius=wallThickness
+                        (wall band) yields two polygons following the same
+                        organic contour at a constant offset. corridorPolygon
+                        is a plain quadrilateral ribbon between two points,
+                        used for corridors in both dungeon render styles.
   engine/settlementLayout.ts   buildCityMask/sampleDistrictSites/
                         buildVoronoiDistricts/buildRoadEdges: real Voronoi
                         settlement layout — a jittered organic boundary
@@ -301,7 +377,13 @@ src/
                         IS the organic outline — no separate union/buffer
                         pass needed), roads a pure function of site
                         positions (seat + 2 nearest, angular ring loop,
-                        per-site nearest-neighbor). Uses d3-delaunay
+                        per-site nearest-neighbor). Also
+                        generateBuildingFootprints(districtPolygon, mask,
+                        roadSegments, rng): density-based (not count-based)
+                        rejection-sampled building/park rectangles per
+                        district, avoiding roads/the outer wall via
+                        point-to-segment distance checks (no polygon-buffer
+                        dependency needed for that). Uses d3-delaunay
                         (Voronoi) + polygon-clipping (mask clipping) — see
                         engine/polygonClip.ts for a real bug workaround in
                         the latter (its .d.ts declares named exports; the
@@ -350,22 +432,38 @@ src/
                         recomputed as the frontier grows, so revealing new hexes
                         doesn't yank the camera away from a panned/zoomed view.
   hexgrid/DungeonMapSvg.tsx  Renders a generated dungeon's real BSP room
-                        layout: variable-sized pixel-space rectangles
-                        (src/engine/dungeonLayout.ts) + corridor lines
-                        between geometrically-adjacent rooms (a room can have
-                        more than one corridor, not just a single parent
-                        edge). data-room-id Playwright convention preserved.
-  hexgrid/SettlementMapSvg.tsx  Renders a generated settlement's real Voronoi
-                        layout (src/engine/settlementLayout.ts): the jittered
-                        mask as a background boundary polygon, each district
-                        as its real clipped polygon, roads as SVG native
-                        quadratic-Bezier `<path>`s (one computed control
-                        point per edge — no curve library needed). Replaced
-                        the old hexgrid/GridLayoutSvg.tsx (uniform grid
-                        cells), which is gone — removed as dead code once
-                        both dungeons and settlements had their own real
-                        renderers. data-district-id Playwright convention
-                        preserved.
+                        layout in one of two styles picked by the `caveStyle`
+                        prop (DungeonSiteView.tsx sets it from site.siteType):
+                        Cave/Deep tunnels get organic cavern blobs (via
+                        engine/caveRenderShapes.ts) with a crosshatch
+                        SVG-pattern wall band; Tomb/Ruins keep rectangular
+                        rooms (src/engine/dungeonLayout.ts) with a
+                        brick-pattern wall band. Both share a VTT-style grid
+                        background pattern and render corridors as real
+                        wall-band+floor polygon bands (not a bare line) —
+                        rectangular rooms are deliberately inset from their
+                        true rect bounds so a visible gap exists for the
+                        corridor to occupy (BSP rooms tile edge-to-edge with
+                        zero gap otherwise, which is why corridors were
+                        barely visible before this). data-room-id Playwright
+                        convention preserved.
+  hexgrid/SettlementMapSvg.tsx  Renders a generated settlement as an actual
+                        city map, not a flat-color diagram (rewritten same
+                        day as the first version — see Status above for the
+                        full story): ground fill → faint per-district color
+                        wash (orientation only) → streets (thick ribbons,
+                        drawn BEFORE buildings so they stay visible — the
+                        first version's bug was drawing them after/under
+                        the opaque districts) → building rects (rotated,
+                        cycling a warm terracotta palette) + park ellipses
+                        with tree-dot markers → invisible district
+                        click-hit-regions → wall + towers (circles at every
+                        3rd mask vertex) → labels last, with a readability
+                        stroke halo. Replaced the old hexgrid/GridLayoutSvg.tsx
+                        (uniform grid cells), which is gone — removed as
+                        dead code once both dungeons and settlements had
+                        their own real renderers. data-district-id
+                        Playwright convention preserved.
   state/mapReducer.ts   Hex/MapState types, MapAction union, pure reducer.
                         Party occupies one hex; MOVE_PARTY_TO only succeeds
                         into an adjacent hex (no map-size bound — reveals +
@@ -494,19 +592,18 @@ navigate-to-details action.
 ## Not done / possible next steps
 
 Phases 1-2 of the sites/settlements/encounters/Mongo plan, the
-arbitrary-size hex maps phase, real dungeon maps (BSP room layout),
-dungeon monster/NPC population (name/flavor only, from the user's B/X
-compilation), and real settlement maps (Voronoi districts + organic
-boundary + curved roads — see Status above) are all built and
-browser-verified; nothing there is known-broken or half-finished.
-**Visual-fidelity asymmetry worth knowing about**: settlements now render
-with real organic geometry and curved roads, while dungeons (built one
-phase earlier) still render as flat colored rectangles with barely-visible
-corridors — the dungeon visual-polish deferral noted back in phase 5
-hasn't been revisited since; worth doing now that settlements demonstrate
-a richer visual bar, but not automatically done just because settlements
-shipped. Agreed build order for what's left (see Status above and the plan
-file for design detail):
+arbitrary-size hex maps phase, real dungeon maps (BSP room layout, plus its
+own later visual revision to organic cave rendering for Cave/Deep tunnels
+and a rectangular-with-walls polish for Tomb/Ruins), dungeon monster/NPC
+population (name/flavor only, from the user's B/X compilation), and real
+settlement maps (including its same-day revision to an actual
+illustrated-style city map after the first Voronoi-only version was
+rejected as looking like an abstract diagram) — see Status above — are all
+built and browser-verified; nothing there is known-broken or
+half-finished. Both dungeons and settlements now have real illustrated-map
+visual treatments (no more visual-fidelity asymmetry between them). Agreed
+build order for what's left (see Status above and the plan file for
+design detail):
 1. **Settlement NPC population** (reuses the dungeon phase's Monster/NPC
    engine).
 2. **Node/Express + MongoDB backend for multi-campaign persistence.** The

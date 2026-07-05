@@ -5,6 +5,11 @@ import { DungeonMapSvg, type DungeonMapRoomData } from '../../hexgrid/DungeonMap
 import { ROOM_TYPE_COLORS } from '../../data/siteColors'
 import { HexBaseInfo } from './HexBaseInfo'
 
+// Cave/Deep tunnels are natural formations (organic cavern rendering); Tomb/Ruins are built
+// structures (rectangular rendering, thematically plausible straight walls) — see
+// DungeonMapSvg.tsx for what each style actually looks like.
+const CAVE_STYLE_SITE_TYPES = ['Cave', 'Deep tunnels']
+
 export function DungeonSiteView({ hex, site }: { hex: Hex; site: DungeonSite }) {
   const dispatch = useMapDispatch()
 
@@ -15,6 +20,7 @@ export function DungeonSiteView({ hex, site }: { hex: Hex; site: DungeonSite }) 
     label: room.isObjectiveRoom ? '★' : String(room.index + 1),
     highlighted: room.isObjectiveRoom,
   }))
+  const caveStyle = CAVE_STYLE_SITE_TYPES.includes(site.siteType)
 
   return (
     <div className="site-view">
@@ -31,7 +37,7 @@ export function DungeonSiteView({ hex, site }: { hex: Hex; site: DungeonSite }) 
         </div>
 
         <div className="site-layout">
-          <DungeonMapSvg rooms={rooms} connections={site.connections} />
+          <DungeonMapSvg rooms={rooms} connections={site.connections} caveStyle={caveStyle} />
         </div>
 
         <ol className="room-list">
