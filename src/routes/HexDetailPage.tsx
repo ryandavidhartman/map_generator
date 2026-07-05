@@ -4,6 +4,10 @@ import { useMapDispatch, useMapState } from '../state/MapContext'
 import { WildernessView } from '../components/hexdetail/WildernessView'
 import { DungeonSiteView } from '../components/hexdetail/DungeonSiteView'
 import { SettlementView } from '../components/hexdetail/SettlementView'
+import { TowerSiteView } from '../components/hexdetail/TowerSiteView'
+import { ShrineSiteView } from '../components/hexdetail/ShrineSiteView'
+import { RiftSiteView } from '../components/hexdetail/RiftSiteView'
+import { KeepSiteView } from '../components/hexdetail/KeepSiteView'
 
 export function HexDetailPage() {
   const { hexId } = useParams<{ hexId: string }>()
@@ -34,6 +38,14 @@ export function HexDetailPage() {
         <SettlementView hex={hex} site={hex.site} />
       ) : hex.site?.kind === 'dungeon' ? (
         <DungeonSiteView hex={hex} site={hex.site} />
+      ) : hex.site?.kind === 'tower' ? (
+        <TowerSiteView hex={hex} site={hex.site} />
+      ) : hex.site?.kind === 'shrine' ? (
+        <ShrineSiteView hex={hex} site={hex.site} />
+      ) : hex.site?.kind === 'rift' ? (
+        <RiftSiteView hex={hex} site={hex.site} />
+      ) : hex.site?.kind === 'keep' ? (
+        <KeepSiteView hex={hex} site={hex.site} />
       ) : (
         <p>Generating site…</p>
       )}

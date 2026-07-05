@@ -1,25 +1,10 @@
 import { rollDie, type Rng } from './dice'
-import {
-  siteSizeForD6,
-  siteTypeForD6,
-  roomTypeForD10,
-  roomDetailForType,
-  ROOM_TYPE_NEEDS_TWO_ROLLS,
-  dungeonDangerForD6,
-  type SiteType,
-  type SiteSize,
-  type RoomType,
-} from '../data/dungeonTables'
-import { rollMonster, rollNpcType, type MonsterEntry } from '../data/monsterTables'
+import { siteSizeForD6, siteTypeForD6, dungeonDangerForD6, type SiteType, type SiteSize, type RoomType } from '../data/dungeonTables'
 import type { DangerLevel } from '../data/tables'
 import { generateDungeonLayout, type Rect } from './dungeonLayout'
+import { rollRoomContent, type GeneratedMonster, type GeneratedNpc } from './roomContent'
 
-// Room types that get a rolled creature attached, on top of their existing book-RAW flavor
-// descriptor (e.g. "Mighty Brute") — see monsterTables.ts for the name-only/no-stats scope.
-const MONSTER_ROOM_TYPES: RoomType[] = ['Solo Monster', 'Monster Mob', 'Boss Monster']
-
-export type GeneratedMonster = MonsterEntry
-export type GeneratedNpc = { type: string }
+export type { GeneratedMonster, GeneratedNpc }
 
 export type Room = {
   id: string
@@ -54,29 +39,13 @@ export function generateDungeonSite(rng: Rng = Math.random, overrideSiteType?: S
   const layout = generateDungeonLayout(sizeSpec.roomCount, rng)
 
   const rooms: Room[] = layout.rooms.map(({ rect, index }) => {
-    const roomTypeRoll = rollDie(10, rng)
-    const roomType = roomTypeForD10(roomTypeRoll)
-    const detail: string | undefined =
-      roomType === 'Empty'
-        ? undefined
-        : ROOM_TYPE_NEEDS_TWO_ROLLS[roomType]
-          ? roomDetailForType(roomType, rollDie(6, rng), rollDie(6, rng))
-          : roomDetailForType(roomType, rollDie(6, rng))
-
-    const monster: GeneratedMonster | undefined = MONSTER_ROOM_TYPES.includes(roomType)
-      ? rollMonster(rng, { siteType, excludeMundane: roomType === 'Boss Monster' })
-      : undefined
-    const npc: GeneratedNpc | undefined = roomType === 'NPC' ? { type: rollNpcType(rng) } : undefined
+    const content = rollRoomContent(rng, siteType)
 
     return {
       id: `room-${index}`,
       index,
       rect,
-      roomType,
-      roomTypeRoll,
-      detail,
-      monster,
-      npc,
+      ...content,
       isObjectiveRoom: false,
     }
   })

@@ -22,6 +22,38 @@ export function siteSizeForD6(roll: number): SiteSizeSpec {
   return SITE_SIZE_SPECS.Large
 }
 
+// Tower level count by Size — a house-rule extension (not book RAW), confirmed 2026-07-04:
+// reuses the same Size roll every other site kind uses rather than inventing a second size
+// axis, remapped to a level count instead of a room count. Each tier spans exactly 2 values,
+// so engine/generateTower.ts picks within the range with a single d2 roll.
+export type TowerLevelRange = { min: number; max: number }
+
+const TOWER_LEVEL_RANGES: Record<SiteSize, TowerLevelRange> = {
+  Small: { min: 1, max: 2 },
+  Medium: { min: 3, max: 4 },
+  Large: { min: 5, max: 6 },
+}
+
+export function towerLevelRangeForSize(size: SiteSize): TowerLevelRange {
+  return TOWER_LEVEL_RANGES[size]
+}
+
+// Keep above-ground room count by Size (excludes the courtyard hub) — another house-rule
+// extension reusing the Size roll, confirmed 2026-07-04. Same "each tier spans exactly 2
+// values" shape as Tower, so engine/generateKeep.ts also picks within the range with one d2
+// roll.
+export type KeepRoomCountRange = { min: number; max: number }
+
+const KEEP_ROOM_COUNT_RANGES: Record<SiteSize, KeepRoomCountRange> = {
+  Small: { min: 3, max: 4 },
+  Medium: { min: 5, max: 6 },
+  Large: { min: 7, max: 8 },
+}
+
+export function keepRoomCountRangeForSize(size: SiteSize): KeepRoomCountRange {
+  return KEEP_ROOM_COUNT_RANGES[size]
+}
+
 // Site Type table (d6).
 export type SiteType = 'Cave' | 'Tomb' | 'Deep tunnels' | 'Ruins'
 
