@@ -106,7 +106,7 @@ export function mapReducer(state: MapState, action: MapAction): MapState {
       const hex = state.hexes[action.hexId]
       if (!hex) return state
       const danger = rollDangerLevel(action.rng)
-      const poi = rollPointOfInterest(action.rng)
+      const poi = rollPointOfInterest(hex.terrain, action.rng)
       return {
         ...state,
         // poi is always re-rolled here, so any previously generated site (derived from the

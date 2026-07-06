@@ -38,10 +38,15 @@ export function HexBaseInfo({ hex }: { hex: Hex }) {
           <p>
             <strong>Point of interest:</strong> {hex.poi.location}
           </p>
-          <p>{hex.poi.development}</p>
+          {hex.poi.development && <p>{hex.poi.development}</p>}
           {hex.poi.cataclysm && (
             <p>
               <strong>Cataclysm:</strong> {hex.poi.cataclysm}
+            </p>
+          )}
+          {hex.poi.naturalLandmark && (
+            <p>
+              <strong>Landmark:</strong> {hex.poi.naturalLandmark}
             </p>
           )}
           {hex.poi.settlementName && (

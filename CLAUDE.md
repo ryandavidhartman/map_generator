@@ -270,8 +270,8 @@ of it, across two rounds** (plan updated accordingly):
    random encounters. Full design detail, file:line citations into
    `shadowdark-rest`, and open questions for each sub-phase are in
    `docs/plan-sites-settlements-mongo.md`.
-3. 🔄 **Location Generator expansion (house-rule, not RAW) — in progress,
-   started 2026-07-04, same day as the settlement-map revision.** Confirmed
+3. ✅ **Location Generator expansion (house-rule, not RAW) — done,
+   started 2026-07-04, finished 2026-07-05.** Confirmed
    requirement: only 4 dungeon Site Types (Cave/Tomb/Deep tunnels/Ruins)
    existed despite 20+ distinct overland Points of Interest flavors, a
    thematic disconnect — most POIs resolved to a mechanically-identical
@@ -396,17 +396,67 @@ of it, across two rounds** (plan updated accordingly):
      correctly on the central feature (no Ritual/leader's space rolled that
      generation); zero console errors. Hack reverted immediately after,
      confirmed via `git diff` showing zero delta from the committed state.
-   - **POI table cutover — not started, now unblocked (all 5 kinds above
-     are done).** Full d200 table + full routing table (which POI feature
-     routes to which of the 10 site kinds, with forced Site/Settlement Type
-     and flavor tags) is now locked and durably written down in
-     `docs/plan-sites-settlements-mongo.md`'s "Location Generator
-     expansion" → "Locked table content" section — that section is the
-     single source of truth for this data; if it's ever revised, edit it
-     there first. (An earlier attempt to implement this lost the table
-     content because it had only ever been pasted into chat, not saved to
-     a file — recovered once by mining the raw session transcript; don't
-     let that happen again.)
+   - ✅ **POI table cutover — done, browser-verified 2026-07-05.** New
+     `src/data/locationTables.ts`: `SiteKind` type, the full range-expanded
+     200-entry Feature table (`locationFeatureForD200`) transcribed
+     verbatim from the locked table in `docs/plan-sites-settlements-mongo.md`
+     (that section remains the single source of truth for this data — an
+     earlier attempt lost the table content because it had only ever been
+     pasted into chat, not saved to a file; edit the doc first if this data
+     is ever revised), plus terrain-keyed Cataclysm d8×7
+     (`cataclysmForTerrain`) and Natural Landmark (`naturalLandmarkForTerrain`)
+     tables. `src/data/tables.ts`'s old d20 `POINTS_OF_INTEREST`/
+     `pointOfInterestForD20`/`CATACLYSM_TRIGGER_DEVELOPMENT`/flat
+     `CATACLYSMS`/`cataclysmForD8` removed as dead code — fully superseded.
+     `SettlementColumn`/`SETTLEMENT_NAMES`/`SETTLEMENT_LOCATIONS` split from
+     3 columns (a combined "City/metropolis") to 4 (Village/Town/City/
+     Metropolis — 8 new invented Metropolis names added, since the Feature
+     table now distinguishes City from Metropolis).
+     `PointOfInterest` (`generateHex.ts`) gained `siteKind?: SiteKind |
+     'none'`, `forcedType?: string`, `naturalLandmark?: string`.
+     `rollPointOfInterest` now takes `terrain` (reusing the hex's own
+     already-rolled terrain — not a fresh 2d6 — per the plan's Step 1 note
+     that the two terrain tables are identical by design) and rolls d200
+     instead of d20: Cataclysm/Natural landmark rows resolve to `siteKind:
+     'none'` with terrain-keyed flavor text and no further site generation
+     (no `GENERATE_SITE` dispatch, no dungeon/settlement/etc. ever rolled for
+     that hex); every other row sets `siteKind` + `forcedType` (+ a flavor
+     tag surfaced via `development` where the table specifies one).
+     `generateSiteForHex` (`generateSite.ts`) now switches directly on
+     `poi.siteKind`: `'none'` → `undefined` (no site); a real `SiteKind` →
+     dispatches to that generator, passing `poi.forcedType` through as the
+     overridden Type roll for `'dungeon'`/`'settlement'` (the other 5 kinds
+     have no Type concept to force) — this is how Village/Town/City/
+     Metropolis POI labels now force the Settlement Type roll. `siteKind`
+     left `undefined` (POIs created via the manual hex-edit form's freeform
+     location/development text) falls back to the pre-cutover
+     `SETTLEMENT_LOCATIONS`-based heuristic, unchanged, for backward
+     compatibility with that UI path. `HexDetailPage.tsx` no longer
+     auto-dispatches `GENERATE_SITE` when `poi.siteKind === 'none'` (doing so
+     would leave `hex.site` permanently unset and re-fire every render
+     instead of settling) and routes that case to `WildernessView` (tweaked
+     to show "a notable feature, but nothing here to delve into" instead of
+     the plain-wilderness note when a POI is present but has no site).
+     `HexBaseInfo.tsx` gained a `naturalLandmark` display line; `development`
+     is now only rendered when non-empty (Cataclysm/Natural landmark rows
+     leave it blank, carrying their text via the dedicated `cataclysm`/
+     `naturalLandmark` fields instead, to avoid showing the same string
+     twice). New `locationTables.test.ts` (49 tests: full 1–200 roll
+     coverage plus boundary spot-checks against the locked table, cataclysm/
+     landmark structural + spot-checks). `generateHex.test.ts`/
+     `generateSite.test.ts`/`mapReducer.test.ts` updated for the new
+     terrain-param signature, d200 rolls, and forced-type dispatch (old
+     d20/flat-cataclysm tests deleted as dead). Full suite green: 290/290
+     Vitest tests, `npx tsc -b`/`npm run build` clean. Browser-verified via
+     a direct `localStorage`-seeded Playwright pass (no source-code hack
+     needed this time — dispatch is now the real production path, not a
+     temporary override) over 4 representative rows: a Cataclysm POI and a
+     Natural landmark POI both showed terrain-keyed flavor text with no
+     site generated and no "Reroll Site" button; a "Small tower" POI
+     rendered a real Tower site; a Metropolis-forced POI rendered an
+     8-district settlement reaching Castle District (only reachable via
+     Metropolis's d8 roll, confirming the forced Settlement Type actually
+     took effect). Zero console errors across all 4.
    Full design detail: `docs/plan-sites-settlements-mongo.md`'s "Location
    Generator expansion" section.
 4. **Mongo backend + multi-campaign persistence — renumbered to phase 10,
@@ -864,21 +914,20 @@ built and browser-verified; nothing there is known-broken or
 half-finished. Both dungeons and settlements now have real illustrated-map
 visual treatments (no more visual-fidelity asymmetry between them).
 
-**Location Generator expansion (see Status item 3 above): all 5 new site
-kinds — Tower, Shrine, Rift, Keep, Camp — are done and browser-verified.**
-Camp (the scope-creep risk of the 5, needing a genuinely new "scatter/zone"
-renderer) shipped without incident: a flat, unordered central-feature +
-N-peripheral-features cluster with no topology, rendered as plain circles
-with zero connecting lines. **Only remaining piece of this phase**: the
-full d200 POI table + `generateSiteForHex` dispatch cutover (routing all 10
-site kinds, plus settlement-type forcing/biasing from POI labels) — see
-`docs/plan-sites-settlements-mongo.md`'s "Location Generator expansion"
-section for full detail, including the note that the exact d200 routing
-table was agreed in conversation but never written down durably, so
-re-confirm it with the user before implementing.
+**Location Generator expansion (see Status item 3 above): fully done and
+browser-verified, including the POI table cutover.** All 5 new site kinds
+— Tower, Shrine, Rift, Keep, Camp — shipped and are routed live from the
+overland POI roll. Camp (the scope-creep risk of the 5, needing a
+genuinely new "scatter/zone" renderer) shipped without incident: a flat,
+unordered central-feature + N-peripheral-features cluster with no
+topology, rendered as plain circles with zero connecting lines. The d200
+Feature table + `generateSiteForHex` dispatch cutover (routing all 10 site
+kinds, plus settlement-type forcing from Village/Town/City/Metropolis POI
+labels) is done — see `docs/plan-sites-settlements-mongo.md`'s "Location
+Generator expansion" section for full detail.
 
-Agreed build order after the Location Generator expansion finishes (see
-Status above and the plan file for design detail):
+Agreed build order now that the Location Generator expansion is finished
+(see Status above and the plan file for design detail):
 1. **Settlement NPC population** (reuses the dungeon phase's Monster/NPC
    engine).
 2. **Node/Express + MongoDB backend for multi-campaign persistence.** The

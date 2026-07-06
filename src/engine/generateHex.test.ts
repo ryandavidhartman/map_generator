@@ -1,20 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import {
-  terrainFor2d6,
-  newHexResultFor2d6,
-  stepTerrain,
-  dangerForD6,
-  pointOfInterestForD20,
-  cataclysmForD8,
-  settlementNameForD8,
-  TERRAIN_ORDER,
-} from '../data/tables'
-import {
-  rollNextTerrain,
-  rollPointOfInterest,
-  generateStartingHexDetails,
-  generateNextHexDetails,
-} from './generateHex'
+import { terrainFor2d6, newHexResultFor2d6, stepTerrain, dangerForD6, settlementNameForD8, TERRAIN_ORDER } from '../data/tables'
+import { rollNextTerrain, rollPointOfInterest, generateStartingHexDetails, generateNextHexDetails } from './generateHex'
 
 // A scripted RNG: each call to Math.random() returns the next queued value.
 // rollDie(sides) computes floor(rng() * sides) + 1, so to force a specific
@@ -99,45 +85,14 @@ describe('Danger Level table (d6)', () => {
   })
 })
 
-describe('Points of Interest table (d20)', () => {
-  it('has 20 entries, all populated', () => {
-    for (let roll = 1; roll <= 20; roll++) {
-      const entry = pointOfInterestForD20(roll)
-      expect(entry.location).toBeTruthy()
-      expect(entry.development).toBeTruthy()
-    }
-  })
-
-  it('roll 1 is the cataclysm-triggering small tower', () => {
-    expect(pointOfInterestForD20(1)).toEqual({
-      location: 'Small tower',
-      development: 'Disaster! Roll on Cataclysm table',
-    })
-  })
-
-  it('roll 20 is the holy shrine', () => {
-    expect(pointOfInterestForD20(20)).toEqual({
-      location: 'Holy shrine',
-      development: 'With a door to another plane',
-    })
-  })
-})
-
-describe('Cataclysm table (d8)', () => {
-  it.each([
-    [1, 'Volcano'],
-    [8, 'Magical disaster'],
-  ] as const)('roll %i -> %s', (roll, result) => {
-    expect(cataclysmForD8(roll)).toBe(result)
-  })
-})
-
 describe('Settlement Name table (d8)', () => {
   it('looks up per-column names', () => {
     expect(settlementNameForD8(1, 'Village')).toBe("Bruga's Hold")
     expect(settlementNameForD8(1, 'Town')).toBe('Fairhollow')
-    expect(settlementNameForD8(1, 'City/metropolis')).toBe('Doraine')
-    expect(settlementNameForD8(8, 'City/metropolis')).toBe('Rahgbat')
+    expect(settlementNameForD8(1, 'City')).toBe('Doraine')
+    expect(settlementNameForD8(8, 'City')).toBe('Rahgbat')
+    expect(settlementNameForD8(1, 'Metropolis')).toBe('Karrathis')
+    expect(settlementNameForD8(8, 'Metropolis')).toBe('Old Korrigal')
   })
 })
 
@@ -166,31 +121,81 @@ describe('rollNextTerrain', () => {
 describe('rollPointOfInterest', () => {
   it('returns undefined when the d6 check fails', () => {
     const rng = scripted([forDieResult(2, 6)])
-    expect(rollPointOfInterest(rng)).toBeUndefined()
+    expect(rollPointOfInterest('Grassland', rng)).toBeUndefined()
   })
 
-  it('chains into cataclysm when the small tower disaster is rolled', () => {
+  it('chains into a terrain-keyed cataclysm with no site (feature roll 1)', () => {
     const rng = scripted([
       forDieResult(1, 6), // POI check passes
-      forDieResult(1, 20), // Small tower / disaster
-      forDieResult(3, 8), // cataclysm roll
+      forDieResult(1, 200), // Cataclysm
+      forDieResult(3, 8), // cataclysm roll, keyed by terrain
     ])
-    const poi = rollPointOfInterest(rng)
-    expect(poi?.location).toBe('Small tower')
-    expect(poi?.cataclysm).toBe('Earthquake')
+    const poi = rollPointOfInterest('Mountain', rng)
+    expect(poi?.location).toBe('Cataclysm')
+    expect(poi?.cataclysm).toBe('Quake leveled cliffside settlements')
+    expect(poi?.siteKind).toBe('none')
     expect(poi?.settlementName).toBeUndefined()
   })
 
-  it('chains into settlement name when a settlement is rolled', () => {
+  it('chains into a terrain-keyed natural landmark with no site and no extra roll (feature roll 71-83)', () => {
     const rng = scripted([
       forDieResult(1, 6), // POI check passes
-      forDieResult(7, 20), // Village
+      forDieResult(71, 200), // Natural landmark
+    ])
+    const poi = rollPointOfInterest('Swamp', rng)
+    expect(poi?.location).toBe('Natural landmark')
+    expect(poi?.naturalLandmark).toBe(
+      'Massive, hollowed-out cypress tree wide enough to serve as shelter, rising from the mire',
+    )
+    expect(poi?.siteKind).toBe('none')
+  })
+
+  it('chains into settlement name + forced Settlement Type when a settlement is rolled', () => {
+    const rng = scripted([
+      forDieResult(1, 6), // POI check passes
+      forDieResult(142, 200), // Village
       forDieResult(2, 8), // settlement name roll
     ])
-    const poi = rollPointOfInterest(rng)
+    const poi = rollPointOfInterest('Grassland', rng)
     expect(poi?.location).toBe('Village')
+    expect(poi?.siteKind).toBe('settlement')
+    expect(poi?.forcedType).toBe('Village')
     expect(poi?.settlementName).toBe('Lastwatch')
     expect(poi?.cataclysm).toBeUndefined()
+  })
+
+  it('routes to a dungeon with a forced Site Type + flavor tag (e.g. Large tomb)', () => {
+    const rng = scripted([
+      forDieResult(1, 6), // POI check passes
+      forDieResult(20, 200), // Large tomb
+    ])
+    const poi = rollPointOfInterest('Mountain', rng)
+    expect(poi?.location).toBe('Large tomb')
+    expect(poi?.siteKind).toBe('dungeon')
+    expect(poi?.forcedType).toBe('Tomb')
+    expect(poi?.development).toBe('Large tomb')
+  })
+
+  it('routes to a dungeon with no forced type for the generic "Dungeon" row (fresh roll, unchanged)', () => {
+    const rng = scripted([
+      forDieResult(1, 6), // POI check passes
+      forDieResult(31, 200), // Dungeon
+    ])
+    const poi = rollPointOfInterest('Mountain', rng)
+    expect(poi?.location).toBe('Dungeon')
+    expect(poi?.siteKind).toBe('dungeon')
+    expect(poi?.forcedType).toBeUndefined()
+  })
+
+  it('routes to one of the 5 house-rule site kinds with no forced type (e.g. Small tower -> Tower)', () => {
+    const rng = scripted([
+      forDieResult(1, 6), // POI check passes
+      forDieResult(2, 200), // Small tower
+    ])
+    const poi = rollPointOfInterest('Mountain', rng)
+    expect(poi?.location).toBe('Small tower')
+    expect(poi?.siteKind).toBe('tower')
+    expect(poi?.forcedType).toBeUndefined()
   })
 })
 

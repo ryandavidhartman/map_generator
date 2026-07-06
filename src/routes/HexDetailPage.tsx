@@ -19,9 +19,11 @@ export function HexDetailPage() {
   const hex = hexId ? state.hexes[hexId] : undefined
 
   // Idempotent: GENERATE_SITE is a no-op once hex.site is already set, so this safely
-  // auto-generates on first visit and does nothing on repeat visits.
+  // auto-generates on first visit and does nothing on repeat visits. A poi.siteKind of 'none'
+  // (Cataclysm/Natural landmark rows — flavor text only) must never dispatch here: hex.site would
+  // stay undefined forever, so gating on it would re-fire every render instead of settling.
   useEffect(() => {
-    if (hex && hex.poi && !hex.site) {
+    if (hex && hex.poi && hex.poi.siteKind !== 'none' && !hex.site) {
       dispatch({ type: 'GENERATE_SITE', hexId: hex.id })
     }
   }, [hex, dispatch])
@@ -33,7 +35,7 @@ export function HexDetailPage() {
       </button>
       {!hex ? (
         <p>Hex not found.</p>
-      ) : !hex.poi ? (
+      ) : !hex.poi || hex.poi.siteKind === 'none' ? (
         <WildernessView hex={hex} />
       ) : hex.site?.kind === 'settlement' ? (
         <SettlementView hex={hex} site={hex.site} />

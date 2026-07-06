@@ -65,72 +65,20 @@ export function dangerForD6(roll: number): DangerLevel {
   throw new Error(`dangerForD6: roll out of range: ${roll}`)
 }
 
-// Points of Interest table (d20).
-export type PointOfInterestEntry = {
-  location: string
-  development: string
-}
+// Settlement Name table (d8) — four columns, keyed by the forced Settlement Type from the
+// Location Generator's Feature table (src/data/locationTables.ts). Village/Town/City/Metropolis
+// used to share a combined "City/metropolis" column under the old d20 Points of Interest table
+// (removed — superseded by locationTables.ts); split into 4 distinct columns here since the new
+// Feature table now distinguishes City from Metropolis (invented flavor names, not book RAW).
+export type SettlementColumn = 'Village' | 'Town' | 'City' | 'Metropolis'
 
-const POINTS_OF_INTEREST: PointOfInterestEntry[] = [
-  { location: 'Small tower', development: 'Disaster! Roll on Cataclysm table' },
-  { location: 'Fortified keep', development: 'Over/connected to a large tomb' },
-  { location: 'Natural landmark', development: 'Being attacked by an invader' },
-  { location: 'Natural landmark', development: 'Being attacked by an invader' },
-  { location: 'Temple', development: 'Home to an oracle' },
-  { location: 'Barrow mounds', development: 'Around/over a sleeping dragon' },
-  { location: 'Village', development: 'Abandoned and in ruins' },
-  { location: 'Village', development: 'Abandoned and in ruins' },
-  { location: 'Town', development: 'Guarded by its current residents' },
-  { location: 'Town', development: 'Guarded by its current residents' },
-  { location: 'City/metropolis', development: 'Under siege by a warband' },
-  { location: 'Ravine', development: 'Home to a religious cult' },
-  { location: 'Monster nest', development: 'Where a secret circle of wizards meets' },
-  { location: 'Monster nest', development: 'Where a secret circle of wizards meets' },
-  { location: "Hermit's abode", development: 'Occupied by a self-titled king/queen' },
-  { location: 'Cave formation', development: 'Controlled by a malevolent sorcerer' },
-  { location: 'Cave formation', development: 'Controlled by a malevolent sorcerer' },
-  { location: 'Ancient dolmens', development: 'Protected by an age-old guardian' },
-  { location: 'Barbarian camp', development: 'Hiding a great treasure' },
-  { location: 'Holy shrine', development: 'With a door to another plane' },
-]
-
-export function pointOfInterestForD20(roll: number): PointOfInterestEntry {
-  if (roll < 1 || roll > 20) {
-    throw new Error(`pointOfInterestForD20: roll out of range: ${roll}`)
-  }
-  return POINTS_OF_INTEREST[roll - 1]
-}
-
-export const CATACLYSM_TRIGGER_DEVELOPMENT = 'Disaster! Roll on Cataclysm table'
-
-// Cataclysm table (d8).
-const CATACLYSMS = [
-  'Volcano',
-  'Fire',
-  'Earthquake',
-  'Storm',
-  'Flood',
-  'War',
-  'Pestilence',
-  'Magical disaster',
-] as const
-
-export function cataclysmForD8(roll: number): string {
-  if (roll < 1 || roll > 8) {
-    throw new Error(`cataclysmForD8: roll out of range: ${roll}`)
-  }
-  return CATACLYSMS[roll - 1]
-}
-
-// Settlement Name table (d8) — three columns, keyed by POI location.
-export type SettlementColumn = 'Village' | 'Town' | 'City/metropolis'
-
-export const SETTLEMENT_LOCATIONS: readonly string[] = ['Village', 'Town', 'City/metropolis']
+export const SETTLEMENT_LOCATIONS: readonly string[] = ['Village', 'Town', 'City', 'Metropolis']
 
 const SETTLEMENT_NAMES: Record<SettlementColumn, string[]> = {
   Village: ["Bruga's Hold", 'Lastwatch', 'Darkwater', 'Ostlin', 'Treefall', 'Vorn', 'Hillshire', 'Nighthaven'],
   Town: ['Fairhollow', "Ivan's Keep", 'Galina', 'Brightlantern', "Corvin's Crest", 'Ironbridge', 'Skalvin', 'Toresk'],
-  'City/metropolis': ['Doraine', 'Meridia', "King's Gate", 'Myrkhos', 'Rularn', 'Ordos', 'Thane', 'Rahgbat'],
+  City: ['Doraine', 'Meridia', "King's Gate", 'Myrkhos', 'Rularn', 'Ordos', 'Thane', 'Rahgbat'],
+  Metropolis: ['Karrathis', 'Vaelspire', 'Grand Ostrum', 'Thessaly', 'Baradun', 'Solmere', 'Vantara', 'Old Korrigal'],
 }
 
 export function settlementNameForD8(roll: number, column: SettlementColumn): string {

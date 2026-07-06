@@ -91,9 +91,9 @@ describe('mapReducer', () => {
     let state: MapState = mapReducer(EMPTY_MAP_STATE, {
       type: 'START_MAP',
       terrain: 'Grassland',
-      rng: fixedRng(0), // poi check passes, rolls "Small tower" (non-settlement POI)
+      rng: fixedRng(0.15), // poi check passes, rolls a fresh "Dungeon" feature (roll 31, non-settlement)
     })
-    expect(state.hexes['0,0'].poi?.location).toBe('Small tower')
+    expect(state.hexes['0,0'].poi?.location).toBe('Dungeon')
     expect(state.hexes['0,0'].site).toBeUndefined()
 
     state = mapReducer(state, { type: 'GENERATE_SITE', hexId: '0,0', rng: fixedRng(0) })
@@ -115,7 +115,7 @@ describe('mapReducer', () => {
     let state: MapState = mapReducer(EMPTY_MAP_STATE, {
       type: 'START_MAP',
       terrain: 'Grassland',
-      rng: fixedRng(0),
+      rng: fixedRng(0.15),
     })
     state = mapReducer(state, { type: 'GENERATE_SITE', hexId: '0,0', rng: fixedRng(0) })
     const afterFirstGenerate = state
@@ -127,7 +127,7 @@ describe('mapReducer', () => {
     let state: MapState = mapReducer(EMPTY_MAP_STATE, {
       type: 'START_MAP',
       terrain: 'Grassland',
-      rng: fixedRng(0),
+      rng: fixedRng(0.15),
     })
     state = mapReducer(state, { type: 'GENERATE_SITE', hexId: '0,0', rng: fixedRng(0) })
     const firstSite = state.hexes['0,0'].site
@@ -139,7 +139,7 @@ describe('mapReducer', () => {
     let state: MapState = mapReducer(EMPTY_MAP_STATE, {
       type: 'START_MAP',
       terrain: 'Grassland',
-      rng: fixedRng(0),
+      rng: fixedRng(0.15),
     })
     state = mapReducer(state, { type: 'GENERATE_SITE', hexId: '0,0', rng: fixedRng(0) })
     expect(state.hexes['0,0'].site).toBeDefined()
@@ -152,7 +152,7 @@ describe('mapReducer', () => {
     let state: MapState = mapReducer(EMPTY_MAP_STATE, {
       type: 'START_MAP',
       terrain: 'Grassland',
-      rng: fixedRng(0),
+      rng: fixedRng(0.15),
     })
     state = mapReducer(state, { type: 'GENERATE_SITE', hexId: '0,0', rng: fixedRng(0) })
     expect(state.hexes['0,0'].site).toBeDefined()

@@ -1,24 +1,45 @@
 import type { Rng } from './dice'
 import { SETTLEMENT_LOCATIONS } from '../data/tables'
+import type { SiteType } from '../data/dungeonTables'
+import type { SettlementType } from '../data/settlementTables'
 import { generateDungeonSite, type DungeonSite } from './generateDungeon'
 import { generateSettlement, type Settlement } from './generateSettlement'
-import type { TowerSite } from './generateTower'
-import type { ShrineSite } from './generateShrine'
-import type { RiftSite } from './generateRift'
-import type { KeepSite } from './generateKeep'
-import type { CampSite } from './generateCamp'
+import { generateTowerSite, type TowerSite } from './generateTower'
+import { generateShrineSite, type ShrineSite } from './generateShrine'
+import { generateRiftSite, type RiftSite } from './generateRift'
+import { generateKeepSite, type KeepSite } from './generateKeep'
+import { generateCampSite, type CampSite } from './generateCamp'
 import type { PointOfInterest } from './generateHex'
 
-// TowerSite/ShrineSite/RiftSite/KeepSite/CampSite are part of the union so the type system and UI
-// can already handle them, but generateSiteForHex doesn't dispatch to them yet — the full Points
-// of Interest table rewrite (routing all 5 new site kinds) is deliberately batched until Tower,
-// Shrine, Rift, Keep, and Camp all exist, rather than rewiring this dispatch once per kind.
-// See docs/plan-sites-settlements-mongo.md's "Location Generator expansion" section.
 export type GeneratedSite = DungeonSite | Settlement | TowerSite | ShrineSite | RiftSite | KeepSite | CampSite
 
-// Dispatches on the hex's POI location only — settlement/dungeon Type and Size are then
-// rolled fresh inside generateSettlement/generateDungeonSite (see their doc comments).
-export function generateSiteForHex(poi: PointOfInterest, rng: Rng = Math.random): GeneratedSite {
-  if (SETTLEMENT_LOCATIONS.includes(poi.location)) return generateSettlement(rng)
-  return generateDungeonSite(rng)
+// Dispatches on the hex's POI. `poi.siteKind` (set by the Location Generator's Feature table,
+// src/data/locationTables.ts) drives dispatch directly when present: 'none' means no site is ever
+// generated for this hex (Cataclysm/Natural landmark rows); any other SiteKind routes to that
+// generator, passing `poi.forcedType` through as the target generator's own overridden Type roll
+// (Site Type for 'dungeon', Settlement Type for 'settlement' — the other 5 kinds have no Type
+// concept to force). `siteKind` is left undefined for POIs created via the manual hex-edit form
+// (freeform location/development text, no routing metadata) — those fall back to the legacy
+// location-text heuristic that predates the Location Generator.
+export function generateSiteForHex(poi: PointOfInterest, rng: Rng = Math.random): GeneratedSite | undefined {
+  const kind = poi.siteKind ?? (SETTLEMENT_LOCATIONS.includes(poi.location) ? 'settlement' : 'dungeon')
+
+  switch (kind) {
+    case 'none':
+      return undefined
+    case 'settlement':
+      return generateSettlement(rng, poi.forcedType as SettlementType | undefined)
+    case 'dungeon':
+      return generateDungeonSite(rng, poi.forcedType as SiteType | undefined)
+    case 'tower':
+      return generateTowerSite(rng)
+    case 'shrine':
+      return generateShrineSite(rng)
+    case 'rift':
+      return generateRiftSite(rng)
+    case 'keep':
+      return generateKeepSite(rng)
+    case 'camp':
+      return generateCampSite(rng)
+  }
 }
