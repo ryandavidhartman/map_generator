@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { terrainFor2d6, newHexResultFor2d6, stepTerrain, dangerForD6, settlementNameForD8, TERRAIN_ORDER } from '../data/tables'
+import { terrainFor2d6, newHexResultFor2d6, stepTerrain, dangerForD6, settlementNameForD20, settlementNameColumnFor, TERRAIN_ORDER } from '../data/tables'
 import { rollNextTerrain, rollPointOfInterest, generateStartingHexDetails, generateNextHexDetails } from './generateHex'
 
 // A scripted RNG: each call to Math.random() returns the next queued value.
@@ -85,14 +85,28 @@ describe('Danger Level table (d6)', () => {
   })
 })
 
-describe('Settlement Name table (d8)', () => {
+describe('Settlement Name table (d20)', () => {
   it('looks up per-column names', () => {
-    expect(settlementNameForD8(1, 'Village')).toBe("Bruga's Hold")
-    expect(settlementNameForD8(1, 'Town')).toBe('Fairhollow')
-    expect(settlementNameForD8(1, 'City')).toBe('Doraine')
-    expect(settlementNameForD8(8, 'City')).toBe('Rahgbat')
-    expect(settlementNameForD8(1, 'Metropolis')).toBe('Karrathis')
-    expect(settlementNameForD8(8, 'Metropolis')).toBe('Old Korrigal')
+    expect(settlementNameForD20(1, 'Village')).toBe("Bruga's Hold")
+    expect(settlementNameForD20(20, 'Village')).toBe('Hollowmere')
+    expect(settlementNameForD20(1, 'Town')).toBe('Fairhollow')
+    expect(settlementNameForD20(20, 'Town')).toBe('Kestrel Bend')
+    expect(settlementNameForD20(1, 'City/Metropolis')).toBe('Doraine')
+    expect(settlementNameForD20(20, 'City/Metropolis')).toBe('Ivanthar')
+  })
+
+  it('throws out of range', () => {
+    expect(() => settlementNameForD20(0, 'Village')).toThrow()
+    expect(() => settlementNameForD20(21, 'Village')).toThrow()
+  })
+})
+
+describe('settlementNameColumnFor', () => {
+  it('keeps Village and Town as their own columns, but merges City and Metropolis', () => {
+    expect(settlementNameColumnFor('Village')).toBe('Village')
+    expect(settlementNameColumnFor('Town')).toBe('Town')
+    expect(settlementNameColumnFor('City')).toBe('City/Metropolis')
+    expect(settlementNameColumnFor('Metropolis')).toBe('City/Metropolis')
   })
 })
 
@@ -154,7 +168,7 @@ describe('rollPointOfInterest', () => {
     const rng = scripted([
       forDieResult(1, 6), // POI check passes
       forDieResult(142, 200), // Village
-      forDieResult(2, 8), // settlement name roll
+      forDieResult(2, 20), // settlement name roll
     ])
     const poi = rollPointOfInterest('Grassland', rng)
     expect(poi?.location).toBe('Village')
@@ -162,6 +176,18 @@ describe('rollPointOfInterest', () => {
     expect(poi?.forcedType).toBe('Village')
     expect(poi?.settlementName).toBe('Lastwatch')
     expect(poi?.cataclysm).toBeUndefined()
+  })
+
+  it('names a forced Metropolis from the shared City/Metropolis name pool', () => {
+    const rng = scripted([
+      forDieResult(1, 6), // POI check passes
+      forDieResult(200, 200), // Metropolis
+      forDieResult(2, 20), // settlement name roll
+    ])
+    const poi = rollPointOfInterest('Grassland', rng)
+    expect(poi?.location).toBe('Metropolis')
+    expect(poi?.forcedType).toBe('Metropolis')
+    expect(poi?.settlementName).toBe('Meridia')
   })
 
   it('routes to a dungeon with a forced Site Type + flavor tag (e.g. Large tomb)', () => {

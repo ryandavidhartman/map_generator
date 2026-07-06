@@ -65,25 +65,45 @@ export function dangerForD6(roll: number): DangerLevel {
   throw new Error(`dangerForD6: roll out of range: ${roll}`)
 }
 
-// Settlement Name table (d8) — four columns, keyed by the forced Settlement Type from the
-// Location Generator's Feature table (src/data/locationTables.ts). Village/Town/City/Metropolis
-// used to share a combined "City/metropolis" column under the old d20 Points of Interest table
-// (removed — superseded by locationTables.ts); split into 4 distinct columns here since the new
-// Feature table now distinguishes City from Metropolis (invented flavor names, not book RAW).
-export type SettlementColumn = 'Village' | 'Town' | 'City' | 'Metropolis'
+// Settlement Name table (d20) — three columns, transcribed verbatim from the user's canonical
+// Location Generator doc (Village/Town/City+Metropolis — City and Metropolis intentionally share
+// one name pool there, unlike the Settlement Type roll itself which keeps them as distinct types;
+// see settlementNameColumnFor below). Keyed by the forced Settlement Type from the Location
+// Generator's Feature table (src/data/locationTables.ts).
+export type SettlementColumn = 'Village' | 'Town' | 'City/Metropolis'
 
 export const SETTLEMENT_LOCATIONS: readonly string[] = ['Village', 'Town', 'City', 'Metropolis']
 
 const SETTLEMENT_NAMES: Record<SettlementColumn, string[]> = {
-  Village: ["Bruga's Hold", 'Lastwatch', 'Darkwater', 'Ostlin', 'Treefall', 'Vorn', 'Hillshire', 'Nighthaven'],
-  Town: ['Fairhollow', "Ivan's Keep", 'Galina', 'Brightlantern', "Corvin's Crest", 'Ironbridge', 'Skalvin', 'Toresk'],
-  City: ['Doraine', 'Meridia', "King's Gate", 'Myrkhos', 'Rularn', 'Ordos', 'Thane', 'Rahgbat'],
-  Metropolis: ['Karrathis', 'Vaelspire', 'Grand Ostrum', 'Thessaly', 'Baradun', 'Solmere', 'Vantara', 'Old Korrigal'],
+  Village: [
+    "Bruga's Hold", 'Lastwatch', 'Darkwater', 'Ostlin', 'Treefall', 'Vorn', 'Hillshire', 'Nighthaven',
+    'Millbrook', 'Stonewick', 'Emberfen', 'Wrenhollow', 'Oakmere', 'Greyfurrow', 'Thistledown', 'Ashvale',
+    'Coldrun', 'Fenwick', 'Sparrowgate', 'Hollowmere',
+  ],
+  Town: [
+    'Fairhollow', "Ivan's Keep", 'Galina', 'Brightlantern', "Corvin's Crest", 'Ironbridge', 'Skalvin', 'Toresk',
+    'Havensworth', 'Duskmoor', 'Castellan', 'Wyndale', "Ferrow's Landing", 'Brannigan', 'Silverford',
+    "Aldric's Rest", 'Thornmarch', 'Greywatch', 'Marrowvale', 'Kestrel Bend',
+  ],
+  'City/Metropolis': [
+    'Doraine', 'Meridia', "King's Gate", 'Myrkhos', 'Rularn', 'Ordos', 'Thane', 'Rahgbat',
+    'Valdorra', 'Sorenthal', 'Casterun', 'Nemvark', 'Aldrathas', 'Korvashan', 'Ethmoor', 'Zalkarra',
+    'Ostravia', 'Belmourne', 'Draxholm', 'Ivanthar',
+  ],
 }
 
-export function settlementNameForD8(roll: number, column: SettlementColumn): string {
-  if (roll < 1 || roll > 8) {
-    throw new Error(`settlementNameForD8: roll out of range: ${roll}`)
+export function settlementNameForD20(roll: number, column: SettlementColumn): string {
+  if (roll < 1 || roll > 20) {
+    throw new Error(`settlementNameForD20: roll out of range: ${roll}`)
   }
   return SETTLEMENT_NAMES[column][roll - 1]
+}
+
+// Maps a forced Settlement Type (the Feature table's "Village"/"Town"/"City"/"Metropolis" values)
+// to its Settlement Name column — City and Metropolis share one name pool per the doc, even though
+// they remain distinct Settlement Types for district-count/district-type-roll purposes elsewhere.
+export function settlementNameColumnFor(settlementType: string): SettlementColumn {
+  if (settlementType === 'Village') return 'Village'
+  if (settlementType === 'Town') return 'Town'
+  return 'City/Metropolis'
 }

@@ -408,10 +408,11 @@ of it, across two rounds** (plan updated accordingly):
      tables. `src/data/tables.ts`'s old d20 `POINTS_OF_INTEREST`/
      `pointOfInterestForD20`/`CATACLYSM_TRIGGER_DEVELOPMENT`/flat
      `CATACLYSMS`/`cataclysmForD8` removed as dead code — fully superseded.
-     `SettlementColumn`/`SETTLEMENT_NAMES`/`SETTLEMENT_LOCATIONS` split from
-     3 columns (a combined "City/metropolis") to 4 (Village/Town/City/
-     Metropolis — 8 new invented Metropolis names added, since the Feature
-     table now distinguishes City from Metropolis).
+     Settlement Name table gained a same-day follow-up (see below) that
+     expanded it to d20/20 names per column, still 3 columns (Village/Town/
+     City+Metropolis share one pool) — City and Metropolis remain distinct
+     Settlement *Types* (district count/roll) via `settlementNameColumnFor`,
+     they just share a name pool.
      `PointOfInterest` (`generateHex.ts`) gained `siteKind?: SiteKind |
      'none'`, `forcedType?: string`, `naturalLandmark?: string`.
      `rollPointOfInterest` now takes `terrain` (reusing the hex's own
@@ -457,6 +458,29 @@ of it, across two rounds** (plan updated accordingly):
      8-district settlement reaching Castle District (only reachable via
      Metropolis's d8 roll, confirming the forced Settlement Type actually
      took effect). Zero console errors across all 4.
+   - ✅ **Settlement Name table expanded to d20/20 names per column — done,
+     2026-07-05, same day as the cutover above.** The user supplied a
+     canonical `location-generator.md` reference doc (their own working
+     copy of the Location Generator spec) with an expanded Settlement Name
+     section: still 3 columns (Village/Town/City+Metropolis share one name
+     pool), but d20 instead of d8, 20 names each instead of 8. This doc's
+     scheme predates and supersedes a same-day judgment call made while
+     building the cutover above, which had (incorrectly, as it turned out)
+     split the name table into 4 columns with invented Metropolis-only
+     names — reverted back to the 3-column/d20 scheme once the user's
+     actual canonical doc surfaced. `src/data/tables.ts`:
+     `settlementNameForD8`/8-name lists replaced by `settlementNameForD20`
+     + the 20-name lists transcribed verbatim from the doc (first 8 of each
+     column match the original names exactly, confirming this is a
+     continuation, not a rewrite); new `settlementNameColumnFor(settlementType)`
+     maps the Feature table's 4 distinct Settlement Types to the 3 name
+     columns (City and Metropolis both resolve to `'City/Metropolis'` for
+     naming purposes only — they remain distinct Settlement *Types* for
+     district-count/roll purposes elsewhere, e.g. `generateSettlement.ts`).
+     `generateHex.ts`'s settlement-name roll updated to d20 via that mapping.
+     Tests updated in `generateHex.test.ts` (d20 range + column-merge
+     checks). Full suite green: 293/293 Vitest tests, `npx tsc -b`/`npm run
+     build` clean.
    Full design detail: `docs/plan-sites-settlements-mongo.md`'s "Location
    Generator expansion" section.
 4. **Mongo backend + multi-campaign persistence — renumbered to phase 10,

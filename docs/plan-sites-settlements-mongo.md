@@ -298,7 +298,9 @@ Real-browser Playwright verification required (per this project's documented his
   - New `src/hexgrid/CampMapSvg.tsx` — plain circles at their computed positions, **no connecting lines drawn at all** (per spec: "a camp isn't traversed room-to-room"), deliberately simpler visual treatment than `DungeonMapSvg`/`SettlementMapSvg` (flat background, no patterns/textures) given the scope-creep flag. Uses a new `data-feature-id` Playwright-targeting attribute (a third convention alongside `data-room-id`/`data-district-id`, since "feature" fit better than "room" for a topology-free scatter). New `src/components/hexdetail/CampSiteView.tsx` and `CAMP_CENTRAL_COLOR`/`CAMP_FEATURE_COLORS` in `siteColors.ts`.
   - Wired into `generateSite.ts`'s `GeneratedSite` union (type-only) and `HexDetailPage.tsx`'s route branch; dispatch itself is still unchanged, correct per the batched-cutover plan.
   - **Verification**: 9 new tests (5 in `campLayout.test.ts` — correct peripheral counts, non-negative coordinates, no circle-overlap across counts, no `connections` property at all; 4 in `generateCamp.test.ts` — scripted Ritual-feature-becomes-objective and central-fallback-objective cases, plus seeded structural invariants across 6 seeds confirming valid feature counts and exactly one objective per site). Full suite green: `npx tsc -b`/`npm run build` clean, 232/232 Vitest tests passing. Browser-verified via the temporary-hack-then-revert Playwright pattern (same `localStorage`-seeding approach as Keep's verification): a Large camp rendered as 6 peripheral circles at irregular distances around a central circle, correctly colored by feature type, no connecting lines, objective star correctly placed on the central feature (no Ritual/leader's space rolled that generation); zero console errors. Hack reverted immediately after, confirmed via `git diff` showing zero delta from the committed state.
-- **POI table cutover — done, browser-verified (2026-07-05).** New `src/data/locationTables.ts`: `SiteKind` type, range-expanded 200-entry Feature table (`locationFeatureForD200`) transcribed verbatim from the locked table below, terrain-keyed Cataclysm d8×7 (`cataclysmForTerrain`) and Natural Landmark (`naturalLandmarkForTerrain`) tables. `src/data/tables.ts`'s old d20 `POINTS_OF_INTEREST`/`pointOfInterestForD20`/`CATACLYSM_TRIGGER_DEVELOPMENT`/flat `CATACLYSMS`/`cataclysmForD8` removed as dead code (fully superseded); `SettlementColumn`/`SETTLEMENT_NAMES`/`SETTLEMENT_LOCATIONS` split from 3 columns (combined "City/metropolis") to 4 (Village/Town/City/Metropolis — 8 new invented Metropolis names added, since City/Metropolis are now distinguished by the Feature table).
+- **POI table cutover — done, browser-verified (2026-07-05).** New `src/data/locationTables.ts`: `SiteKind` type, range-expanded 200-entry Feature table (`locationFeatureForD200`) transcribed verbatim from the locked table below, terrain-keyed Cataclysm d8×7 (`cataclysmForTerrain`) and Natural Landmark (`naturalLandmarkForTerrain`) tables. `src/data/tables.ts`'s old d20 `POINTS_OF_INTEREST`/`pointOfInterestForD20`/`CATACLYSM_TRIGGER_DEVELOPMENT`/flat `CATACLYSMS`/`cataclysmForD8` removed as dead code (fully superseded).
+
+**Settlement Name table — same-day follow-up (2026-07-05), superseding an interim decision.** The cutover above initially split `SettlementColumn`/`SETTLEMENT_NAMES` from 3 columns (combined "City/metropolis") to 4 (Village/Town/City/Metropolis, with 8 invented Metropolis-only names), guessing that City and Metropolis should get separate name pools since the Feature table treats them as distinct Settlement Types. The user then supplied a canonical `location-generator.md` reference doc containing the actual intended Settlement Name section: still 3 columns (Village/Town/City+Metropolis sharing one pool), but expanded to d20/20 names per column (the first 8 of each column match the original 8 exactly, confirming continuation not replacement). Reverted the 4-column split; `src/data/tables.ts` now has `settlementNameForD20` + 20-name lists transcribed verbatim from that doc, plus a new `settlementNameColumnFor(settlementType)` that maps the Feature table's 4 distinct Settlement Types onto the 3 name columns (City and Metropolis both resolve to `'City/Metropolis'` for naming only — they stay distinct Settlement Types for district-count/roll purposes in `generateSettlement.ts`). `generateHex.ts` rolls d20 via that mapping instead of d8. Tests updated in `generateHex.test.ts`. Full suite green: 293/293 Vitest tests, `npx tsc -b`/`npm run build` clean.
   `PointOfInterest` (`generateHex.ts`) gained `siteKind?: SiteKind | 'none'`, `forcedType?: string`, `naturalLandmark?: string`. `rollPointOfInterest` now takes `terrain` (reusing the hex's own already-rolled terrain, not a fresh 2d6, per the plan's Step 1 note) and rolls d200 instead of d20: Cataclysm/Natural landmark rows resolve to `siteKind: 'none'` with terrain-keyed flavor text and no further site generation; every other row sets `siteKind` + `forcedType` (+ a flavor tag stored in `development` where the table specifies one).
   `generateSiteForHex` (`generateSite.ts`) now switches directly on `poi.siteKind`: `'none'` → `undefined` (no site); a real `SiteKind` → dispatches to that generator, passing `poi.forcedType` through as the overridden Type roll for `'dungeon'`/`'settlement'` (the other 5 kinds have no Type to force) — this is how Village/Town/City/Metropolis POI labels now force the Settlement Type roll, confirmed working via `generateSite.test.ts` and a live Metropolis POI reaching Castle District (only possible via Metropolis's d8 roll) in browser verification. `siteKind` left `undefined` (manually-edited hexes via the free-text Edit form) falls back to the pre-cutover `SETTLEMENT_LOCATIONS`-based heuristic unchanged.
   `HexDetailPage.tsx` no longer auto-dispatches `GENERATE_SITE` when `poi.siteKind === 'none'` (would otherwise never settle `hex.site` and re-render forever) and routes that case to `WildernessView` (tweaked to show "a notable feature, but nothing here to delve into" instead of the plain-wilderness note when a POI is present). `HexBaseInfo.tsx` gained a `naturalLandmark` display line; `development` is now only rendered when non-empty.
@@ -391,11 +393,42 @@ Ranges sum to exactly 200 with no gaps or overlaps (verified by hand when transc
 | Ocean | Ring of jagged sea stacks marking a sunken reef or old wreck |
 | Mountain | Natural amphitheater or crater lake in a dormant volcanic caldera |
 
+#### Settlement Names (d20, 3 columns — added 2026-07-05, from the user's canonical `location-generator.md` doc)
+
+Village and Town each get their own column; City and Metropolis intentionally share one column here
+(naming only — they remain distinct Settlement *Types* for district-count/roll purposes, see
+`settlementNameColumnFor` in `src/data/tables.ts`). First 8 entries of each column are the original
+pre-expansion 8-name lists (roll 1-8 unchanged); rolls 9-20 are the 2026-07-05 addition.
+
+| Roll | Village | Town | City/Metropolis |
+|---|---|---|---|
+| 1 | Bruga's Hold | Fairhollow | Doraine |
+| 2 | Lastwatch | Ivan's Keep | Meridia |
+| 3 | Darkwater | Galina | King's Gate |
+| 4 | Ostlin | Brightlantern | Myrkhos |
+| 5 | Treefall | Corvin's Crest | Rularn |
+| 6 | Vorn | Ironbridge | Ordos |
+| 7 | Hillshire | Skalvin | Thane |
+| 8 | Nighthaven | Toresk | Rahgbat |
+| 9 | Millbrook | Havensworth | Valdorra |
+| 10 | Stonewick | Duskmoor | Sorenthal |
+| 11 | Emberfen | Castellan | Casterun |
+| 12 | Wrenhollow | Wyndale | Nemvark |
+| 13 | Oakmere | Ferrow's Landing | Aldrathas |
+| 14 | Greyfurrow | Brannigan | Korvashan |
+| 15 | Thistledown | Silverford | Ethmoor |
+| 16 | Ashvale | Aldric's Rest | Zalkarra |
+| 17 | Coldrun | Thornmarch | Ostravia |
+| 18 | Fenwick | Greywatch | Belmourne |
+| 19 | Sparrowgate | Marrowvale | Draxholm |
+| 20 | Hollowmere | Kestrel Bend | Ivanthar |
+
 #### How to use it (book-style summary, for GM reference — not literally how the code should be structured)
 1. Roll 2d6 for terrain (in practice: reuse the hex's own terrain, already rolled — see Step 1 note above).
 2. Roll d200 for the feature.
 3. If Cataclysm (1) or Natural landmark (71–83), roll/look up the matching terrain-keyed sub-table.
-4. Everything else: route to the site kind per the table above, with the given Forced Type/Flavor.
+4. If you rolled a settlement (Village/Town/City/Metropolis), roll d20 on the matching Settlement Name column above (City and Metropolis share one column).
+5. Everything else: route to the site kind per the table above, with the given Forced Type/Flavor.
 
 #### Provenance of the less-obvious routing calls (for anyone auditing this later)
 - **Mine (active/abandoned) → flavor of Deep Tunnels, not a new kind.** Same shape; "active" swaps in worker NPCs/mundane hazards, "abandoned" swaps in collapse hazards/monster squatters (not yet wired — flavor-as-data only, see above).

@@ -1,5 +1,5 @@
 import { rollDie, roll2d6, type Rng } from './dice'
-import { type Terrain, type DangerLevel, type SettlementColumn, terrainFor2d6, newHexResultFor2d6, stepTerrain, dangerForD6, settlementNameForD8 } from '../data/tables'
+import { type Terrain, type DangerLevel, terrainFor2d6, newHexResultFor2d6, stepTerrain, dangerForD6, settlementNameForD20, settlementNameColumnFor } from '../data/tables'
 import { type SiteKind, locationFeatureForD200, cataclysmForTerrain, naturalLandmarkForTerrain } from '../data/locationTables'
 
 export type PointOfInterest = {
@@ -68,7 +68,7 @@ export function rollPointOfInterest(terrain: Terrain, rng: Rng = Math.random): P
   }
 
   if (entry.routesTo === 'settlement' && entry.forcedType) {
-    poi.settlementName = settlementNameForD8(rollDie(8, rng), entry.forcedType as SettlementColumn)
+    poi.settlementName = settlementNameForD20(rollDie(20, rng), settlementNameColumnFor(entry.forcedType))
   }
 
   return poi
