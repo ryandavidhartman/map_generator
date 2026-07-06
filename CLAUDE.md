@@ -1163,10 +1163,18 @@ kinds, plus settlement-type forcing from Village/Town/City/Metropolis POI
 labels) is done — see `docs/plan-sites-settlements-mongo.md`'s "Location
 Generator expansion" section for full detail.
 
-Agreed build order now that the Location Generator expansion is finished
-(see Status above and the plan file for design detail):
+**Also done since the Location Generator expansion finished (2026-07-06):**
+a `/poi/:n` review route (force-generates any of the 200 Feature-table rows
+for direct GM review — see the "POI review tool" section above), a Keep
+rendering rewrite (walled compound with towers/gatehouse, replacing the old
+hub-and-spoke starburst), an expanded Settlement Name table (d20/20 names,
+3 columns), and a per-site monster-theming fix (one locked category per
+generated site instead of per room, plus a hard Boss Monster exclusion for
+Animal/Insect) — see Status items above for full detail on each.
+
+Agreed build order (see Status above and the plan file for design detail):
 1. **Settlement NPC population** (reuses the dungeon phase's Monster/NPC
-   engine).
+   engine) — confirmed next, starting the session after 2026-07-06.
 2. **Node/Express + MongoDB backend for multi-campaign persistence.** The
    app still only saves one map to localStorage — no named/listable
    campaigns, no server, no `.env`, nothing. Reuses a shared Atlas cluster
@@ -1176,6 +1184,22 @@ Agreed build order now that the Location Generator expansion is finished
    generation form sensible contiguous bodies — design sketch (not final)
    now exists in the plan file, informed by reviewing `shadowdark-rest`'s
    own hex map generator.
+
+**Confirmed but not yet scoped, deliberately deferred behind Settlement NPC
+population (2026-07-06):** a full **"old-school TSR style" visual rewrite**
+of every site-map renderer (Dungeon/Settlement/Keep/Tower/Camp — the
+current "painted VTT" look: warm terracotta buildings, brick/crosshatch
+patterns, organic cave blobs) — the user explicitly called the current
+renderers "fine as abstractions" but wants something closer to classic
+hand-drawn AD&D/Basic-D&D module maps (blue-line graph-paper grids, black
+line-art walls/corridors, numbered rooms, little-to-no color fill). This is
+a large, multi-renderer visual pass, not a small tweak — **do not start it
+without first getting a reference image from the user and confirming scope**
+(exactly like every other visual revision in this project's history: the
+settlement-building-footprint rewrite, the dungeon cave-rendering rewrite,
+and the Keep walled-compound rewrite all started from a concrete reference
+image before any code was touched). No reference image has been supplied
+for this one yet.
 
 A few Phase-2-adjacent items intentionally deferred rather than built:
 a "Tomb" random-encounter table doesn't exist in the book, so dungeons of
