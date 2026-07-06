@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { terrainFor2d6, newHexResultFor2d6, stepTerrain, dangerForD6, settlementNameForD20, settlementNameColumnFor, TERRAIN_ORDER } from '../data/tables'
-import { rollNextTerrain, rollPointOfInterest, generateStartingHexDetails, generateNextHexDetails } from './generateHex'
+import {
+  rollNextTerrain,
+  rollPointOfInterest,
+  pointOfInterestForFeatureRoll,
+  generateStartingHexDetails,
+  generateNextHexDetails,
+} from './generateHex'
 
 // A scripted RNG: each call to Math.random() returns the next queued value.
 // rollDie(sides) computes floor(rng() * sides) + 1, so to force a specific
@@ -129,6 +135,28 @@ describe('rollNextTerrain', () => {
       forDieResult(1, 6), // fresh 2d6 roll = 2 -> Desert/arctic
     ])
     expect(rollNextTerrain('Mountain', rng)).toBe('Desert/arctic')
+  })
+})
+
+describe('pointOfInterestForFeatureRoll', () => {
+  it('skips the 1-in-6 gate entirely — no die consumed for it', () => {
+    // A scripted rng with a single queued value would throw if a d6 gate roll were consumed
+    // before the feature-specific rolls; only the settlement-name d20 roll below is expected.
+    const rng = scripted([forDieResult(1, 20)])
+    const poi = pointOfInterestForFeatureRoll('Grassland', 142, rng) // 142 -> Village
+    expect(poi.location).toBe('Village')
+    expect(poi.settlementName).toBe("Bruga's Hold")
+  })
+
+  it('matches what rollPointOfInterest produces for the same feature roll', () => {
+    const rng = scripted([forDieResult(3, 8)]) // cataclysm roll
+    const poi = pointOfInterestForFeatureRoll('Mountain', 1, rng) // 1 -> Cataclysm
+    expect(poi).toEqual({
+      location: 'Cataclysm',
+      development: '',
+      cataclysm: 'Quake leveled cliffside settlements',
+      siteKind: 'none',
+    })
   })
 })
 

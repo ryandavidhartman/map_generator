@@ -779,7 +779,13 @@ src/
                         (unconditional); REROLL_HEX and EDIT_HEX (when the
                         patch touches poi) clear a stale site.
   state/MapContext.tsx  Context + useReducer provider, lazy-inits from
-                        localStorage, persists on every change.
+                        localStorage, persists on every change by default.
+                        MapProvider takes optional initialState/persist
+                        props (added for PoiReviewPage.tsx below) so a
+                        caller can run an isolated, non-persisting reducer
+                        instance seeded with arbitrary state instead of the
+                        real campaign — the app's top-level provider in
+                        App.tsx omits both, unchanged normal behavior.
   persistence/localStorage.ts  save/load under key
                         `shadowdark-hex-crawl:map`. Fails silently if
                         localStorage is unavailable. Single-map only — no
@@ -818,19 +824,41 @@ src/
                         Uses a new data-feature-id Playwright-targeting
                         attribute (a third convention alongside
                         data-room-id/data-district-id).
-  routes/HexDetailPage.tsx  The "/hex/:hexId" route. Auto-dispatches
-                        GENERATE_SITE on first visit to a POI hex (idempotent,
-                        so revisits are safe), then renders Wilderness/
-                        Dungeon/Settlement/Tower/Shrine/Rift/Keep/Camp view
-                        based on hex.site.kind — all 10 site kinds now have a
-                        UI, though generateSiteForHex's dispatch still only
-                        routes to Settlement/Dungeon (see "Location
-                        Generator expansion" above; the POI table cutover is
-                        the only remaining piece).
+  components/hexdetail/HexSiteContent.tsx  Auto-dispatches GENERATE_SITE on
+                        first mount for a POI hex (idempotent, so repeat
+                        mounts are safe; skipped entirely when
+                        poi.siteKind === 'none'), then renders the right
+                        Wilderness/Dungeon/Settlement/Tower/Shrine/Rift/
+                        Keep/Camp view based on hex.site.kind. Factored out
+                        of HexDetailPage.tsx so PoiReviewPage.tsx (below)
+                        can reuse the exact same auto-generate+render logic
+                        against a synthetic hex in its own throwaway
+                        MapProvider, not just the real campaign map.
+  routes/HexDetailPage.tsx  The "/hex/:hexId" route: looks up the hex from
+                        the real (localStorage-persisted) map state, then
+                        just renders <HexSiteContent hex={hex} />.
+  routes/PoiReviewPage.tsx  The "/poi/:n" route (n = 1-200) — a GM-facing
+                        review tool, not part of the normal play flow. Forces
+                        generation of the Location Generator's Feature-table
+                        row n directly (via the new pointOfInterestForFeatureRoll
+                        export from generateHex.ts, which skips the outer
+                        1-in-6 POI-check gate that rollPointOfInterest has),
+                        with a terrain selector (only affects the
+                        terrain-keyed Cataclysm/Natural-landmark rows),
+                        Reroll POI, and Prev/Next buttons. Runs its synthetic
+                        single hex through its own nested MapProvider with
+                        persist={false} (see MapContext.tsx below) so
+                        reviewing POIs can never overwrite the real
+                        campaign's localStorage save; keyed by
+                        `${roll}-${terrain}-${rerollNonce}` so changing any
+                        of those fully remounts (fresh reducer) rather than
+                        mutating in place.
 ```
 
-Routing: `react-router-dom` v6, `BrowserRouter` in `main.tsx`. Two routes
-today: `/` (overland map) and `/hex/:hexId` (full view). Clicking a revealed
+Routing: `react-router-dom` v6, `BrowserRouter` in `main.tsx`. Three routes
+today: `/` (overland map), `/hex/:hexId` (full view), and `/poi/:n` (the
+POI review tool — see "POI review tool" section below; not part of the
+normal play flow). Clicking a revealed
 hex on the overland map used to open a sidebar (`SELECT_HEX`) — it now
 double-click-navigates instead (see HexTile.tsx above); the old
 `HexDetailsPanel.tsx` sidebar component was deleted, its content lives in
@@ -923,6 +951,52 @@ a following click can cancel it and fire the double-click action instead) —
 `await page.waitForTimeout(300)` (or similar) after `.click()` before
 asserting on its effect, or use `.dblclick()` directly for the
 navigate-to-details action.
+
+## POI review tool (`/poi/:n`)
+
+Added 2026-07-05 so every row of the d200 Location Generator Feature table
+can be eyeballed directly, instead of hoping the 1-in-6 overland POI check
+plus a d200 roll happen to land on the row being reviewed. Visit
+`/poi/1` through `/poi/200` (any other value shows an inline "Invalid roll"
+message, no crash). `src/routes/PoiReviewPage.tsx`: a Terrain `<select>`
+(only affects the terrain-keyed Cataclysm (roll 1) / Natural landmark
+(71–83) rows), a "Reroll POI" button (re-rolls that row's own internal
+dice — e.g. Cataclysm's d8, a settlement's name — without changing which
+Feature row you're looking at), and Prev/Next buttons that just navigate to
+`/poi/{n-1}`/`/poi/{n+1}`.
+
+**Runs in its own throwaway `MapProvider`, never the real campaign's.**
+`src/state/MapContext.tsx`'s `MapProvider` gained optional `initialState`/
+`persist` props (the app's normal top-level provider still omits both,
+unchanged behavior: loads + persists the real campaign to localStorage).
+`PoiReviewPage` seeds a single synthetic hex `'0,0'` via
+`pointOfInterestForFeatureRoll(terrain, roll, Math.random)` (a new export
+from `generateHex.ts`, factored out of `rollPointOfInterest` — same Feature
+table logic, just skipping the outer 1-in-6 gate roll) and renders it
+through a **nested** `MapProvider` with `persist={false}`, keyed by
+`` `${roll}-${terrain}-${rerollNonce}` `` so changing terrain/roll/reroll
+fully remounts (fresh `useReducer` init) rather than trying to mutate an
+existing reducer instance in place. Since it's a nested provider, the outer
+real `MapProvider`'s context is shadowed for that subtree — `HexSiteContent`
+(see below) doesn't need to know or care which provider it's under.
+Browser-verified (Playwright) that the real campaign's
+`localStorage['shadowdark-hex-crawl:map']` is byte-for-byte unchanged after
+visiting several `/poi/:n` rolls, rerolling, and changing terrain.
+
+**Shared with `HexDetailPage`**: the auto-`GENERATE_SITE`-dispatch-then-
+render-by-`site.kind` logic used to live directly in `HexDetailPage.tsx`;
+it's now `src/components/hexdetail/HexSiteContent.tsx` (`{ hex }` in, right
+view out), used by both `HexDetailPage` (looks up a hex from the real map)
+and `PoiReviewPage` (looks up its single synthetic hex from the throwaway
+provider). No behavior change for the real map — same component, just
+relocated.
+
+Browser-verified across representative rolls (Cataclysm, Natural landmark,
+Shrine, a settlement with a forced name, a fresh unforced Dungeon roll, a
+Rift) plus Reroll POI, terrain switching, Prev/Next nav, and invalid rolls
+(0/201/non-numeric) — all correct, zero console errors. 2 new tests in
+`generateHex.test.ts` for `pointOfInterestForFeatureRoll`. 295/295 Vitest
+tests, `npx tsc -b`/`npm run build` clean.
 
 ## Not done / possible next steps
 

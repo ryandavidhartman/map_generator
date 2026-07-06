@@ -5,6 +5,7 @@ import { StartMapDialog } from './components/StartMapDialog'
 import { Toolbar } from './components/Toolbar'
 import { Legend } from './components/Legend'
 import { HexDetailPage } from './routes/HexDetailPage'
+import { PoiReviewPage } from './routes/PoiReviewPage'
 import { MapProvider, useMapState } from './state/MapContext'
 
 function OverlandMapScreen() {
@@ -40,6 +41,7 @@ function App() {
       <Routes>
         <Route path="/" element={<OverlandMapScreen />} />
         <Route path="/hex/:hexId" element={<HexDetailPage />} />
+        <Route path="/poi/:n" element={<PoiReviewPage />} />
       </Routes>
     </MapProvider>
   )

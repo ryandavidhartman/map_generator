@@ -42,13 +42,13 @@ export function rollDangerLevel(rng: Rng = Math.random): DangerLevel {
 }
 
 // Location Generator (house-rule expansion — see docs/plan-sites-settlements-mongo.md's
-// "Location Generator expansion" section for the full locked table + provenance). Step 1
-// (Terrain 2d6) is not a fresh roll here — it reuses the hex's own already-rolled `terrain`,
-// per that section's note that the two 2d6 tables are identical by design.
-export function rollPointOfInterest(terrain: Terrain, rng: Rng = Math.random): PointOfInterest | undefined {
-  if (rollDie(6, rng) !== 1) return undefined
-
-  const entry = locationFeatureForD200(rollDie(200, rng))
+// "Location Generator expansion" section for the full locked table + provenance). Builds the POI
+// for an already-decided Feature roll (1-200) — split out of rollPointOfInterest so a review tool
+// (src/routes/PoiReviewPage.tsx) can force a specific roll without going through the outer 1-in-6
+// gate. Terrain is not a fresh roll here — it reuses the hex's own already-rolled `terrain`, per
+// that section's note that the two 2d6 tables are identical by design.
+export function pointOfInterestForFeatureRoll(terrain: Terrain, featureRoll: number, rng: Rng = Math.random): PointOfInterest {
+  const entry = locationFeatureForD200(featureRoll)
 
   if (entry.routesTo === 'cataclysm') {
     const cataclysm = cataclysmForTerrain(terrain, rollDie(8, rng))
@@ -72,6 +72,11 @@ export function rollPointOfInterest(terrain: Terrain, rng: Rng = Math.random): P
   }
 
   return poi
+}
+
+export function rollPointOfInterest(terrain: Terrain, rng: Rng = Math.random): PointOfInterest | undefined {
+  if (rollDie(6, rng) !== 1) return undefined
+  return pointOfInterestForFeatureRoll(terrain, rollDie(200, rng), rng)
 }
 
 export function generateStartingHexDetails(terrain: Terrain, rng: Rng = Math.random): GeneratedHexDetails {

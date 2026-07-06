@@ -9,12 +9,24 @@ function initMapState(): MapState {
   return loadMapState() ?? EMPTY_MAP_STATE
 }
 
-export function MapProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(mapReducer, undefined, initMapState)
+// `initialState`/`persist` let a caller run an isolated, throwaway reducer instance instead of the
+// real campaign map — used by PoiReviewPage.tsx so forcing a POI roll for review can never
+// overwrite the real map's localStorage save. Omit both for the normal app usage (loads/persists
+// the real campaign, unchanged).
+export function MapProvider({
+  children,
+  initialState,
+  persist = true,
+}: {
+  children: ReactNode
+  initialState?: MapState
+  persist?: boolean
+}) {
+  const [state, dispatch] = useReducer(mapReducer, undefined, () => initialState ?? initMapState())
 
   useEffect(() => {
-    saveMapState(state)
-  }, [state])
+    if (persist) saveMapState(state)
+  }, [state, persist])
 
   return (
     <MapStateContext.Provider value={state}>
