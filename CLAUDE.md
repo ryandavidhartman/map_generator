@@ -358,6 +358,64 @@ of it, across two rounds** (plan updated accordingly):
      no overlaps, correct room-type coloring; zero console errors. Hack
      reverted immediately after, confirmed via `git diff` showing zero
      delta from the committed state.
+     **Revision (2026-07-06): radial starburst replaced with a walled
+     compound.** The user reviewed a live "Medium Keep" via the `/poi/:n`
+     review tool and flagged that the hub-and-spoke starburst (courtyard at
+     center, rooms fanned out on spokes) doesn't read as a keep at all —
+     pointed to [a reference image](https://images-wixmp-ed30a86b8c4ca887773594c2.wixmp.com/f/18f18ede-002f-48d4-a1b0-1b419e8a0dc3/de7w3ae-5780f1a5-16cb-4a31-a788-1cc32c22c37a.jpg)
+     of a walled fortification: square curtain wall, corner + midpoint
+     round towers, a gatehouse with a path leading out, and a clustered
+     building sitting in its own open courtyard yard. Fetched and viewed
+     the image directly before rebuilding (same pattern as the dungeon/
+     settlement visual revisions). **Scope confirmed as rendering +
+     geometry, not a topology change**: the courtyard-hub / named-first-hop
+     / generic-second-hop *connectivity* model in `generateKeep.ts` is
+     untouched — only *where rects get placed* changed.
+     `src/engine/keepLayout.ts` rewritten: named rooms (each immediately
+     followed by its own generic children, grouped) now tile into a
+     compact grid "building block" (uniform cells, named rooms rendered
+     larger than generic within their cell), with the courtyard as a
+     separate yard rect positioned beside it (not radiating around it) —
+     read together they look like a keep's building sitting in its walled
+     yard, not a wheel of spokes. `computeKeepLayout`'s signature/return
+     shape (`{courtyard, named, generic}`) is unchanged, so
+     `generateKeep.ts`/`KeepSite`'s schema and rng-consumption are
+     completely untouched — same "no schema change, purely a rendering-
+     layer feature" approach as the cave-rendering revision. New
+     `src/hexgrid/KeepMapSvg.tsx` (replacing the old "reuses DungeonMapSvg
+     unmodified" approach — Keep now has its own dedicated renderer, like
+     every other site kind): derives the outer wall purely from the
+     bounding box of the room rects it's handed at render time (+ a fixed
+     margin) — again no new persisted data, matching how
+     `caveRenderShapes.ts` derives a room's cave-blob shape from its
+     existing `rect`. Renders 4 corner + 4 edge-midpoint towers (circles,
+     same technique as `SettlementMapSvg.tsx`'s wall towers), a gatehouse
+     breach in the bottom wall segment (two small flanking gate-towers + a
+     short path stub leading outward), the courtyard as flat open yard
+     ground (no wall band — it's outdoors), and building rooms with the
+     same brick-wall-band + floor double-layer treatment
+     `DungeonMapSvg.tsx` already uses for Tomb/Ruins (a keep is a built
+     structure, not a natural cave). **Real visual bug found and fixed
+     during this same pass**: corridors from the courtyard were originally
+     anchored at the yard rect's *center*, so a corridor cut straight
+     across the entire open yard interior to reach a room on the far side
+     — fixed by anchoring yard-side corridor endpoints at the nearest
+     point on the yard's *edge* instead (`yardAnchorPx` in
+     `KeepMapSvg.tsx`), so a corridor only spans the actual gap between
+     the yard and the building block, not the yard's own interior.
+     2 new tests in `keepLayout.test.ts` (courtyard sits beside, not
+     inside/overlapping, the building block; out-of-range generic parent
+     indices are clamped rather than crashing — a defensive fallback
+     ported over from the old starburst's `?? 0` fallback, since real
+     callers never hit it but the function should stay total). Full suite
+     green: `npx tsc -b`/`npm run build` clean, 297/297 Vitest tests
+     passing. Browser-verified via the `/poi/14`-`/poi/19` review route
+     (Fortified keep's Feature range) across Small/Medium/Large keeps: a
+     proper walled compound rendered each time — outer wall with 8 towers,
+     a gatehouse gap at the bottom, an open courtyard yard beside a
+     grid-packed building cluster, corridors running only through the
+     yard-to-building gap (not across the yard), correct room-type
+     coloring and objective-star marker preserved; zero console errors.
    - ✅ **Camp — done, browser-verified.** Flagged in advance by the user as
      the scope-creep risk of the 5, since it needs a genuinely new
      "scatter/zone" renderer (unlike Keep, which reuses `DungeonMapSvg`).
@@ -667,19 +725,33 @@ src/
                         independent rolls (Origin/Effect/Stability) — there's
                         only one "thing," the rift itself.
   engine/keepLayout.ts        computeKeepLayout(namedCount, genericParentIndices).
-                        Pure radial hub-and-spoke geometry for Keep — a
-                        courtyard hub with named trope rooms as first-hop
-                        spokes and generic overflow rooms as second-hop
-                        (never more than 2 hops from the hub). Deliberately
-                        not a reuse of dungeonLayout.ts's BSP tiler; reuses
-                        DungeonMapSvg for rendering unchanged since that
-                        component only cares about rects + connections.
-                        Fans multiple generic rooms sharing one named parent
-                        by PER-PARENT sibling index with an increasing fan
-                        step, not global index — global-index fanning
-                        repeats the same angle offsets after 2 siblings,
-                        causing an exact overlap for a 3rd/4th sibling on
-                        the same parent (a real bug this file's test caught).
+                        Room-placement geometry for Keep's courtyard-hub /
+                        named-first-hop / generic-second-hop CONNECTIVITY
+                        model (that model itself lives in generateKeep.ts
+                        and is unchanged — never more than 2 hops from the
+                        hub). Originally a radial starburst reusing
+                        DungeonMapSvg unmodified; rewritten 2026-07-06 after
+                        the user flagged the starburst as reading like a
+                        wheel diagram, not a keep. Now tiles named rooms
+                        (each immediately followed by its own generic
+                        children, grouped) into a compact grid "building
+                        block," with the courtyard as a separate yard rect
+                        beside it, not radiating around it. Return shape
+                        (`{courtyard, named, generic}`) is unchanged, so
+                        generateKeep.ts/KeepSite's schema and rng
+                        consumption are untouched by this rendering-driven
+                        geometry change. Deliberately not a reuse of
+                        dungeonLayout.ts's BSP tiler (grid packing is
+                        simpler and sufficient at Keep's small room counts).
+                        The pre-rewrite version fanned multiple generic
+                        rooms sharing one named parent by PER-PARENT sibling
+                        index (not global index) to avoid an exact-overlap
+                        bug — moot now that placement is grid-based rather
+                        than angle-based, but grouping generic rooms
+                        immediately after their named parent in slot order
+                        (see computeKeepLayout's `slots` construction) is the
+                        rewrite's equivalent: it's what keeps a room's
+                        generic children visually adjacent to it in the grid.
   engine/generateKeep.ts      generateKeepSite(rng) — house-rule site kind.
                         Courtyard is always room 1; named slots (Hall/
                         Barracks/Armory/Lord's Quarters) fill first-hop in
@@ -806,15 +878,34 @@ src/
                         a scene-card list, Shrine has no room topology),
                         RiftSiteView (a single indivisible block covering
                         all 3 axes, Rift has no topology either), KeepSiteView
-                        (reuses DungeonMapSvg unmodified via keepLayout.ts's
-                        hub-and-spoke rects/connections), CampSiteView (via
-                        CampMapSvg's scatter/zone rendering, no connections
-                        at all).
+                        (courtyard yard + grid-packed building block via
+                        KeepMapSvg — see below; originally reused
+                        DungeonMapSvg unmodified, replaced 2026-07-06),
+                        CampSiteView (via CampMapSvg's scatter/zone
+                        rendering, no connections at all).
   hexgrid/TowerMapSvg.tsx  Renders Tower's linear level chain as a vertical
                         elevation view (parallel to DungeonMapSvg/
                         SettlementMapSvg, but its own renderer since Tower's
                         shape is a strict chain, not rects+arbitrary
                         connections in a 2D plane).
+  hexgrid/KeepMapSvg.tsx  Renders Keep as a walled compound: outer wall
+                        derived purely from the bounding box of the room
+                        rects it's handed (+ margin, no new persisted data,
+                        same approach caveRenderShapes.ts uses) with 4
+                        corner + 4 edge-midpoint towers and a gatehouse
+                        breach (two small flanking gate-towers + a path
+                        stub), courtyard rendered as flat open yard ground
+                        (no wall band — it's outdoors), building rooms with
+                        the same brick-wall-band + floor double layer
+                        DungeonMapSvg uses for Tomb/Ruins. Anchors a yard's
+                        corridor endpoint at the nearest point on its EDGE,
+                        not its center (`yardAnchorPx`) — otherwise a
+                        corridor cuts straight across the whole open yard
+                        interior instead of just spanning the gap to the
+                        building block. Replaced reusing DungeonMapSvg
+                        unmodified (2026-07-06) once the user flagged
+                        keepLayout.ts's old radial starburst as reading like
+                        a wheel diagram, not a keep.
   hexgrid/CampMapSvg.tsx  Renders Camp's scatter/zone layout (campLayout.ts)
                         as plain circles at their computed positions with NO
                         connecting lines drawn at all — the third distinct

@@ -1,7 +1,7 @@
 import { useMapDispatch } from '../../state/MapContext'
 import type { Hex } from '../../state/mapReducer'
 import type { KeepSite, KeepRoom } from '../../engine/generateKeep'
-import { DungeonMapSvg, type DungeonMapRoomData } from '../../hexgrid/DungeonMapSvg'
+import { KeepMapSvg, type KeepMapRoomData } from '../../hexgrid/KeepMapSvg'
 import { ROOM_TYPE_COLORS } from '../../data/siteColors'
 import { HexBaseInfo } from './HexBaseInfo'
 
@@ -15,11 +15,12 @@ function roomLabel(room: KeepRoom): string {
 export function KeepSiteView({ hex, site }: { hex: Hex; site: KeepSite }) {
   const dispatch = useMapDispatch()
 
-  const rooms: DungeonMapRoomData[] = site.rooms.map((room) => ({
+  const rooms: KeepMapRoomData[] = site.rooms.map((room) => ({
     id: room.id,
     rect: room.rect,
     color: ROOM_TYPE_COLORS[room.roomType],
     label: roomLabel(room),
+    isYard: room.isCourtyard,
     highlighted: room.isObjectiveRoom,
   }))
 
@@ -38,7 +39,7 @@ export function KeepSiteView({ hex, site }: { hex: Hex; site: KeepSite }) {
         </div>
 
         <div className="site-layout">
-          <DungeonMapSvg rooms={rooms} connections={site.connections} />
+          <KeepMapSvg rooms={rooms} connections={site.connections} />
         </div>
 
         <ol className="room-list">

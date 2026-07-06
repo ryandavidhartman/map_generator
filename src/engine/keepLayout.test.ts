@@ -46,4 +46,25 @@ describe('computeKeepLayout', () => {
       }
     }
   })
+
+  it('clamps out-of-range generic parent indices instead of dropping the room', () => {
+    // Real callers (generateKeep.ts) always compute `i % namedCount`, so this can't happen in
+    // practice, but the function should stay total rather than crashing on bad input.
+    const layout = computeKeepLayout(1, [0, 5, -3])
+    expect(layout.generic).toHaveLength(3)
+    for (const rect of layout.generic) {
+      expect(rect).toBeDefined()
+      expect(rect.x).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  it('the courtyard sits beside the building block, not inside/overlapping it (a real gap between them)', () => {
+    const layout = computeKeepLayout(4, [0, 1, 2, 3, 0, 1])
+    const buildingRects = [...layout.named, ...layout.generic]
+    const courtyardRight = layout.courtyard.x + layout.courtyard.width
+    // Every building room is entirely to the right of the courtyard's right edge.
+    for (const rect of buildingRects) {
+      expect(rect.x).toBeGreaterThanOrEqual(courtyardRight)
+    }
+  })
 })
