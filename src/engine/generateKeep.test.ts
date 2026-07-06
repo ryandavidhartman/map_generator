@@ -27,6 +27,7 @@ describe('generateKeepSite', () => {
       forDieResult(1, 6), // size -> Small (range 3-4)
       forDieResult(1, 6), // danger
       forDieResult(1, 2), // above-ground room count d2 -> range.min(3) + 1 - 1 = 3
+      0, // monster theme roll (site-wide, once) — no monster rooms below, value irrelevant
       forDieResult(1, 10), // courtyard -> Empty
       forDieResult(1, 10), // Hall -> Empty
       forDieResult(1, 10), // Barracks -> Empty
@@ -87,6 +88,25 @@ describe('generateKeepSite', () => {
       for (const room of site.rooms) {
         expect(room.rect.x).toBeGreaterThanOrEqual(0)
         expect(room.rect.y).toBeGreaterThanOrEqual(0)
+      }
+    }
+  })
+
+  // Regression coverage for the 2026-07-06 monster-theming fix (see generateDungeon.test.ts's
+  // sibling tests for the full incident) — Keep has no SiteType, so before this fix its rooms
+  // (including the Lord's Quarters slot, biased toward NPC/Boss Monster) rolled monsters from the
+  // entire unweighted pool with no theme at all.
+  it('every non-Boss monster room shares the same theme category, and Boss Monster is never Animal/Insect', () => {
+    for (const seed of [1, 2, 3, 42, 12345, 999999]) {
+      const site = generateKeepSite(seededRng(seed))
+      const nonBossCategories = new Set(
+        site.rooms.filter((r) => r.monster && r.roomType !== 'Boss Monster').map((r) => r.monster!.category),
+      )
+      expect(nonBossCategories.size).toBeLessThanOrEqual(1)
+      for (const room of site.rooms) {
+        if (room.roomType === 'Boss Monster' && room.monster) {
+          expect(['Animal', 'Insect']).not.toContain(room.monster.category)
+        }
       }
     }
   })

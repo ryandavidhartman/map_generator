@@ -32,6 +32,7 @@ describe('generateDungeonSite', () => {
       forDieResult(1, 6), // size d6 -> Small (5 rooms)
       forDieResult(3, 6), // type d6 -> Tomb
       forDieResult(6, 6), // danger d6 -> Deadly
+      0, // monster theme roll (site-wide, once) — no monster rooms below, value irrelevant
       0, 0, 0, 0, // BSP layout: 5 rooms needs 4 splits, 1 rng call each
       forDieResult(1, 10), // room 0 -> Empty
       forDieResult(1, 10), // room 1 -> Empty
@@ -55,24 +56,27 @@ describe('generateDungeonSite', () => {
       forDieResult(1, 6), // size -> Small (5 rooms)
       forDieResult(1, 6), // type -> Cave
       forDieResult(1, 6), // danger -> Unsafe
+      0.85, // monster theme roll -> Monstrous (Cave weights it at 2x baseline; see the math in
+      // this test's sibling below — chosen over Animal/Insect specifically so this test doesn't
+      // hit Boss Monster's category-exclusion fallback, keeping the scripted rng sequence simple.
       0, 0, 0, 0, // BSP layout: 4 splits
       forDieResult(1, 10), // room 0 -> Empty
       forDieResult(10, 10), // room 1 -> Boss Monster (tied max)
       forDieResult(1, 6), // room 1 detail
-      0, 0, // room 1 monster roll: site-type-weighted category pick, then entry-in-category pick
+      0, // room 1 monster roll: entry-in-locked-theme-category pick (theme isn't Boss-excluded)
       forDieResult(1, 10), // room 2 -> Empty
       forDieResult(10, 10), // room 3 -> Boss Monster (tied max, later index)
       forDieResult(1, 6), // room 3 detail
-      0, 0, // room 3 monster roll
+      0, // room 3 monster roll
       forDieResult(1, 10), // room 4 -> Empty
     ])
     const site = generateDungeonSite(rng)
     expect(site.rooms.filter((r) => r.isObjectiveRoom)).toHaveLength(1)
     expect(site.rooms[1].isObjectiveRoom).toBe(true)
-    // Boss Monster excludes mundane creatures — 'Beaver, Giant' is the first non-mundane Animal
-    // entry (Cave's top-weighted category), confirming the mundane filter is actually applied.
-    expect(site.rooms[1].monster).toEqual({ name: 'Beaver, Giant', category: 'Animal' })
-    expect(site.rooms[3].monster).toEqual({ name: 'Beaver, Giant', category: 'Animal' })
+    // Both Boss Monster rooms share the site's one locked theme (Monstrous) and, given the same
+    // scripted entry-pick value, the same first entry in that category — 'Ankheg'.
+    expect(site.rooms[1].monster).toEqual({ name: 'Ankheg', category: 'Monstrous' })
+    expect(site.rooms[3].monster).toEqual({ name: 'Ankheg', category: 'Monstrous' })
     expect(site.rooms[3].isObjectiveRoom).toBe(false)
   })
 
@@ -81,6 +85,7 @@ describe('generateDungeonSite', () => {
       forDieResult(1, 6), // size -> Small
       // no type roll consumed — overridden
       forDieResult(1, 6), // danger -> Unsafe
+      0, // monster theme roll (site-wide, once) — no monster rooms below, value irrelevant
       0, 0, 0, 0, // BSP layout: 4 splits
       forDieResult(1, 10),
       forDieResult(1, 10),
@@ -125,6 +130,30 @@ describe('generateDungeonSite', () => {
         }
         if (room.npc) {
           expect(room.npc.type.length).toBeGreaterThan(0)
+        }
+      }
+    }
+  })
+
+  // Regression coverage for the 2026-07-06 monster-theming fix: the user flagged a generated
+  // dungeon mixing goblins, a giant ferret, driver ants, and a djinni with no unifying theme, and
+  // a "Boss Monster: Ferret, Giant" as an absurd climactic threat.
+  it('every non-Boss monster room in a site shares the same theme category — no independently-rolled grab bag', () => {
+    for (const seed of [1, 2, 3, 42, 12345, 777, 2024]) {
+      const site = generateDungeonSite(seededRng(seed))
+      const nonBossCategories = new Set(
+        site.rooms.filter((r) => r.monster && r.roomType !== 'Boss Monster').map((r) => r.monster!.category),
+      )
+      expect(nonBossCategories.size).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('Boss Monster is never Animal or Insect category, regardless of the site theme', () => {
+    for (const seed of [1, 2, 3, 42, 12345, 777, 2024, 55, 99, 123]) {
+      const site = generateDungeonSite(seededRng(seed))
+      for (const room of site.rooms) {
+        if (room.roomType === 'Boss Monster' && room.monster) {
+          expect(['Animal', 'Insect']).not.toContain(room.monster.category)
         }
       }
     }

@@ -223,11 +223,10 @@ export const MONSTERS: MonsterEntry[] = [
 ]
 
 // Thematic bias, not exclusion: a category not listed for a site type still gets a baseline
-// weight (DEFAULT_CATEGORY_WEIGHT) rather than zero, so an occasional off-theme surprise (a
-// stray Dragon anywhere, say) stays possible — only the listed categories are boosted relative
-// to that baseline. Curated by hand (subjective judgment call, not derived from source data):
-// Cave leans natural/wild, Tomb leans undead, Deep tunnels leans subterranean-labyrinth,
-// Ruins leans fallen-civilization.
+// weight (DEFAULT_CATEGORY_WEIGHT) rather than zero, so rollMonsterTheme (below) can still
+// occasionally pick something off-theme when choosing a site's ONE locked category. Curated by
+// hand (subjective judgment call, not derived from source data): Cave leans natural/wild, Tomb
+// leans undead, Deep tunnels leans subterranean-labyrinth, Ruins leans fallen-civilization.
 const DEFAULT_CATEGORY_WEIGHT = 1
 
 const SITE_TYPE_CATEGORY_WEIGHTS: Record<SiteType, Partial<Record<MonsterCategory, number>>> = {
@@ -235,6 +234,17 @@ const SITE_TYPE_CATEGORY_WEIGHTS: Record<SiteType, Partial<Record<MonsterCategor
   Tomb: { Undead: 6, Construct: 2 },
   'Deep tunnels': { Insect: 3, Monstrous: 3, Humanoid: 2, Giant: 2, Elemental: 2 },
   Ruins: { Construct: 3, Humanoid: 3, Undead: 2, 'Sylvan or Faerie Creature': 2 },
+}
+
+// Never a dungeon's climactic threat, regardless of the site's rolled theme — even the "Giant"/
+// escalated entries in these two categories (Giant Ferret, Driver Ants) read as unimpressive for
+// a Boss Monster, unlike a themed Animal/Insect Solo Monster or Monster Mob encounter, which are
+// still perfectly fine (a pack of giant rats, a driver-ant swarm). Confirmed 2026-07-06 after the
+// user flagged a "Boss Monster: Ferret, Giant" as absurd.
+export const BOSS_EXCLUDED_CATEGORIES: MonsterCategory[] = ['Animal', 'Insect']
+
+function allCategories(pool: MonsterEntry[]): MonsterCategory[] {
+  return [...new Set(pool.map((m) => m.category))]
 }
 
 function pickWeightedCategory(categories: MonsterCategory[], weights: Partial<Record<MonsterCategory, number>>, rng: Rng): MonsterCategory {
@@ -248,23 +258,42 @@ function pickWeightedCategory(categories: MonsterCategory[], weights: Partial<Re
   return weighted[weighted.length - 1].category // float-rounding fallback, never hit in practice
 }
 
+// Rolls ONE monster theme category for an entire generated site (dungeon/tower/keep) — called
+// once by the site generator, then threaded through every room's rollMonster call below, so a
+// site's monsters read as one coherent faction/theme instead of an independently-rolled grab bag
+// (confirmed 2026-07-06 after the user flagged a 12-room dungeon mixing goblins, a giant ferret,
+// driver ants, and a djinni with no unifying theme). `siteType` biases the pick per
+// SITE_TYPE_CATEGORY_WEIGHTS when available (Cave/Tomb/Deep tunnels/Ruins); Tower and Keep have no
+// SiteType, so they pick uniformly across all categories instead — still a single locked theme,
+// just without site-type flavor to bias it.
+export function rollMonsterTheme(rng: Rng = Math.random, siteType?: SiteType): MonsterCategory {
+  const categories = allCategories(MONSTERS)
+  if (!siteType) return categories[Math.floor(rng() * categories.length)]
+  return pickWeightedCategory(categories, SITE_TYPE_CATEGORY_WEIGHTS[siteType], rng)
+}
+
 export type RollMonsterOptions = {
   // Excludes ordinary real-world creatures — use for Boss Monster, not Solo Monster/Monster Mob.
   excludeMundane?: boolean
-  // When given, biases category selection per SITE_TYPE_CATEGORY_WEIGHTS instead of picking
-  // uniformly across the whole (possibly mundane-filtered) pool.
-  siteType?: SiteType
+  // The site's locked theme category (from rollMonsterTheme) — every monster room in one
+  // generated site should pass the same value here so the whole site reads as one theme.
+  theme?: MonsterCategory
+  // Hard-excludes these categories regardless of `theme` — used for Boss Monster
+  // (BOSS_EXCLUDED_CATEGORIES). If `theme` itself is excluded, falls back to a uniform pick among
+  // the remaining allowed categories rather than silently ignoring the exclusion.
+  excludeCategories?: MonsterCategory[]
 }
 
 export function rollMonster(rng: Rng = Math.random, options: RollMonsterOptions = {}): MonsterEntry {
   const pool = options.excludeMundane ? MONSTERS.filter((m) => !m.mundane) : MONSTERS
+  const excluded = new Set(options.excludeCategories ?? [])
 
-  if (!options.siteType) {
-    return pool[Math.floor(rng() * pool.length)]
+  let category = options.theme
+  if (!category || excluded.has(category)) {
+    const candidates = allCategories(pool).filter((c) => !excluded.has(c))
+    category = candidates[Math.floor(rng() * candidates.length)]
   }
 
-  const categories = [...new Set(pool.map((m) => m.category))]
-  const category = pickWeightedCategory(categories, SITE_TYPE_CATEGORY_WEIGHTS[options.siteType], rng)
   const entriesInCategory = pool.filter((m) => m.category === category)
   return entriesInCategory[Math.floor(rng() * entriesInCategory.length)]
 }

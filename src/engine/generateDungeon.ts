@@ -3,6 +3,7 @@ import { siteSizeForD6, siteTypeForD6, dungeonDangerForD6, type SiteType, type S
 import type { DangerLevel } from '../data/tables'
 import { generateDungeonLayout, type Rect } from './dungeonLayout'
 import { rollRoomContent, type GeneratedMonster, type GeneratedNpc } from './roomContent'
+import { rollMonsterTheme } from '../data/monsterTables'
 
 export type { GeneratedMonster, GeneratedNpc }
 
@@ -36,10 +37,13 @@ export function generateDungeonSite(rng: Rng = Math.random, overrideSiteType?: S
   const sizeSpec = siteSizeForD6(rollDie(6, rng))
   const siteType = overrideSiteType ?? siteTypeForD6(rollDie(6, rng))
   const danger = dungeonDangerForD6(rollDie(6, rng))
+  // Rolled once per site, not once per room, so every monster in this dungeon reads as one
+  // coherent faction/theme instead of an independently-rolled grab bag (see monsterTables.ts).
+  const monsterTheme = rollMonsterTheme(rng, siteType)
   const layout = generateDungeonLayout(sizeSpec.roomCount, rng)
 
   const rooms: Room[] = layout.rooms.map(({ rect, index }) => {
-    const content = rollRoomContent(rng, siteType)
+    const content = rollRoomContent(rng, monsterTheme)
 
     return {
       id: `room-${index}`,

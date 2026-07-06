@@ -192,6 +192,49 @@ of it, across two rounds** (plan updated accordingly):
       violations across Boss Monster rooms in ~5 generated dungeons, Cave
       dungeons showed the expected Animal/Lost World lean, zero console
       errors.
+      **Second follow-up fix (2026-07-06), after Tower/Keep existed and the
+      user flagged specific rooms as still "ridiculous"** — a real 12-room
+      example mixed Goblins, a "Boss Monster: Ferret, Giant," driver ants,
+      and a Djinni with zero unifying theme. Root cause: `rollMonster` had
+      re-derived its category **independently for every room**, so even
+      with `SITE_TYPE_CATEGORY_WEIGHTS` biasing each individual roll, a
+      handful of rooms could easily land on unrelated categories with
+      nothing tying them together — and Tower/Keep (no `SiteType`) got
+      *zero* category weighting at all, rolling from the entire ~140-entry
+      pool uniformly. Confirmed with the user upfront (fully-locked theme,
+      not "mostly locked with a rare wildcard"): `monsterTables.ts` gained
+      `rollMonsterTheme(rng, siteType?)` — rolled **once per generated
+      site**, not once per room — and `BOSS_EXCLUDED_CATEGORIES = ['Animal',
+      'Insect']`, a hard exclusion for Boss Monster regardless of theme
+      (even a "Giant"-qualified Ferret/Ant reads as a joke-tier boss, unlike
+      a themed Solo Monster/Monster Mob, where that's still fine).
+      `rollMonster`'s options changed from `{ siteType }` to `{ theme,
+      excludeCategories }`: `theme` is the site's one locked category;
+      `excludeCategories` falls back to a fresh uniform pick among the
+      remaining allowed categories if the locked theme itself is excluded
+      (e.g. a Boss Monster room in an "Animal"-themed dungeon). `roomContent.ts`'s
+      `rollRoomContent`/`rollBiasedRoomContent` take `theme?: MonsterCategory`
+      instead of `siteType?: SiteType`. `generateDungeonSite`/
+      `generateTowerSite`/`generateKeepSite` each call `rollMonsterTheme`
+      exactly once (Tower/Keep pass no `siteType`, so they still get one
+      locked theme, just uniformly chosen rather than site-type-biased) and
+      thread the same `theme` value through every room-content roll for
+      that site — this is also what fixed Tower/Keep's previously-zero
+      theming. New regression tests in `generateDungeon.test.ts`/
+      `generateTower.test.ts`/`generateKeep.test.ts` (every non-Boss
+      monster room in one generated site shares the same category; Boss
+      Monster is never Animal/Insect across many seeds) plus rewritten
+      `monsterTables.test.ts` coverage for `rollMonsterTheme`/the
+      exclusion-fallback path. 306/306 Vitest tests, `npx tsc -b`/`npm run
+      build` clean. Browser-verified via the `/poi/:n` review tool across
+      dungeon/Cave/Keep/Tower rolls (20+ generations, several rerolled in
+      place): every sample's monster list read as one coherent
+      group/faction (e.g. three Sea Dragons; a Wight+Skeleton pair; a
+      Pterodactyl/Giant-Boar/Pterodactyl trio; three Demogorgons), and Boss
+      Monster rooms were genuinely threatening (Werebear, Orc, Demogorgon
+      — the last one paired with a "Religious leader" detail, a
+      thematically apt combination) instead of a giant ferret or driver
+      ants; zero console errors.
    c. ✅ **Real settlement maps — done.** New dependencies: `d3-delaunay`
       (Voronoi) + `polygon-clipping` (polygon intersection) — this
       project's first geometry libraries, both verified compatible with
@@ -693,15 +736,20 @@ src/
                         expansion" above; the full cutover is deliberately
                         batched (all 5 kinds are done now, so this is the
                         only remaining piece of that phase).
-  engine/roomContent.ts       rollRoomContent(rng, siteType?) — Room Type d10
-                        + detail sub-table + monster/npc attachment, factored
-                        out of generateDungeon.ts so generateTower.ts/
-                        generateKeep.ts reuse the exact same book-RAW content
-                        table without duplicating logic. Also
-                        rollBiasedRoomContent(rng, biasedTowardTypes, siteType?)
-                        — a "reroll-toward" bias (roll normally, get exactly
-                        one more chance on a miss), not a hard override; used
-                        by Keep's Armory/Lord's Quarters slots.
+  engine/roomContent.ts       rollRoomContent(rng, theme?: MonsterCategory) —
+                        Room Type d10 + detail sub-table + monster/npc
+                        attachment, factored out of generateDungeon.ts so
+                        generateTower.ts/generateKeep.ts reuse the exact
+                        same book-RAW content table without duplicating
+                        logic. `theme` is the site's ONE locked monster
+                        category (from monsterTables.ts's rollMonsterTheme,
+                        rolled once by the site generator, not once per
+                        room here — see the "Second follow-up fix" note
+                        above). Also rollBiasedRoomContent(rng,
+                        biasedTowardTypes, theme?) — a "reroll-toward" bias
+                        (roll normally, get exactly one more chance on a
+                        miss), not a hard override; used by Keep's
+                        Armory/Lord's Quarters slots.
   data/shrineTables.ts, riftTables.ts   House-rule tables (verbatim from the
                         user, not invented): Shrine's d6 Disposition + d6
                         Approach Feature; Rift's d6 Origin + d6 Effect + d4

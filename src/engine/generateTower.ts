@@ -12,9 +12,10 @@
 //   room (a side pocket off the entry hall — the one permitted branch, always at the bottom,
 //   always rejoining before the climb starts). Every level above that has exactly 1 room.
 // - Content reuses the existing Room Type d10 table unmodified (roomContent.ts) — Tower's
-//   differentiator is shape, not bespoke content. No SiteType-based monster theming applies,
-//   since Tower isn't one of Cave/Tomb/Deep tunnels/Ruins (flavor-aware content generation for
-//   the new site kinds was explicitly deferred).
+//   differentiator is shape, not bespoke content. Tower has no SiteType (Cave/Tomb/Deep
+//   tunnels/Ruins are the only values), so its one locked monster theme (rollMonsterTheme,
+//   2026-07-06) picks uniformly across all categories rather than being site-type-biased —
+//   still a single coherent theme per tower, just without site-type flavor to lean on.
 // - The top level is always the objective, regardless of its own Room Type roll — overriding
 //   the "highest roll wins" rule every other kind uses. Room Type is still rolled normally for
 //   the top level; it decides *what kind* of climax, not *whether* it's the climax. When the
@@ -25,6 +26,7 @@ import { rollDie, type Rng } from './dice'
 import { siteSizeForD6, towerLevelRangeForSize, dungeonDangerForD6, type SiteSize } from '../data/dungeonTables'
 import type { DangerLevel } from '../data/tables'
 import { rollRoomContent, type GeneratedMonster, type GeneratedNpc } from './roomContent'
+import { rollMonsterTheme } from '../data/monsterTables'
 import type { RoomType } from '../data/dungeonTables'
 
 export type TowerRoom = {
@@ -58,12 +60,15 @@ export function generateTowerSite(rng: Rng = Math.random): TowerSite {
   const size = siteSizeForD6(rollDie(6, rng)).size
   const danger = dungeonDangerForD6(rollDie(6, rng))
   const levelCount = rollTowerLevelCount(size, rng)
+  // Rolled once per site (Tower has no SiteType, so this picks uniformly across all categories),
+  // not once per room — see monsterTables.ts's rollMonsterTheme.
+  const monsterTheme = rollMonsterTheme(rng)
 
   const rooms: TowerRoom[] = []
   const connections: [string, string][] = []
 
   function rollRoom(id: string, levelIndex: number, isGuardRoom: boolean): TowerRoom {
-    const content = rollRoomContent(rng)
+    const content = rollRoomContent(rng, monsterTheme)
     return { id, levelIndex, isGuardRoom, ...content, isObjectiveRoom: false }
   }
 

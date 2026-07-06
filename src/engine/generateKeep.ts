@@ -29,6 +29,7 @@ import { rollDie, type Rng } from './dice'
 import { siteSizeForD6, keepRoomCountRangeForSize, dungeonDangerForD6, type SiteSize, type RoomType } from '../data/dungeonTables'
 import type { DangerLevel } from '../data/tables'
 import { rollRoomContent, rollBiasedRoomContent, type GeneratedMonster, type GeneratedNpc } from './roomContent'
+import { rollMonsterTheme } from '../data/monsterTables'
 import { computeKeepLayout, type Rect } from './keepLayout'
 import { generateDungeonSite, type DungeonSite } from './generateDungeon'
 
@@ -78,18 +79,21 @@ export function generateKeepSite(rng: Rng = Math.random): KeepSite {
   const genericParentIndices = Array.from({ length: genericCount }, (_, i) => i % namedCount)
 
   const layout = computeKeepLayout(namedCount, genericParentIndices)
+  // Rolled once per site (Keep has no SiteType, so this picks uniformly across all categories),
+  // not once per room — see monsterTables.ts's rollMonsterTheme.
+  const monsterTheme = rollMonsterTheme(rng)
 
   const rooms: KeepRoom[] = []
   const connections: [string, string][] = []
 
-  const courtyardContent = rollRoomContent(rng)
+  const courtyardContent = rollRoomContent(rng, monsterTheme)
   rooms.push({ id: 'courtyard', name: 'Courtyard', isCourtyard: true, isNamed: true, ...courtyardContent, isObjectiveRoom: false, rect: layout.courtyard })
 
   const namedRoomIds: string[] = []
   for (let i = 0; i < namedCount; i++) {
     const name = NAMED_SLOTS[i]
     const bias = NAMED_SLOT_BIAS[name]
-    const content = bias ? rollBiasedRoomContent(rng, bias) : rollRoomContent(rng)
+    const content = bias ? rollBiasedRoomContent(rng, bias, monsterTheme) : rollRoomContent(rng, monsterTheme)
     const id = `room-${slugify(name)}`
     rooms.push({ id, name, isCourtyard: false, isNamed: true, ...content, isObjectiveRoom: false, rect: layout.named[i] })
     connections.push(['courtyard', id])
@@ -98,7 +102,7 @@ export function generateKeepSite(rng: Rng = Math.random): KeepSite {
 
   for (let i = 0; i < genericCount; i++) {
     const parentId = namedRoomIds[genericParentIndices[i]]
-    const content = rollRoomContent(rng)
+    const content = rollRoomContent(rng, monsterTheme)
     const id = `room-generic-${i}`
     rooms.push({ id, name: `Room ${i + 1}`, isCourtyard: false, isNamed: false, ...content, isObjectiveRoom: false, rect: layout.generic[i] })
     connections.push([parentId, id])

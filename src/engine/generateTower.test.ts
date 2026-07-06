@@ -29,6 +29,7 @@ describe('generateTowerSite', () => {
       forDieResult(1, 6), // size d6 -> Small (level range 1-2)
       forDieResult(6, 6), // danger d6 -> Deadly
       forDieResult(2, 2), // level count d2 -> range.min(1) + 2 - 1 = 2 levels
+      0, // monster theme roll (site-wide, once) — no monster rooms below, value irrelevant
       forDieResult(1, 10), // entry hall room type -> Empty
       forDieResult(1, 10), // guard room room type -> Empty
       forDieResult(9, 10), // level 1 (top) room type -> Treasure
@@ -129,6 +130,7 @@ describe('generateTowerSite', () => {
       forDieResult(1, 6), // Small
       forDieResult(1, 6), // danger
       forDieResult(1, 2), // level count d2 -> range.min(1) + 1 - 1 = 1 level
+      0, // monster theme roll (site-wide, once) — no monster rooms below, value irrelevant
       forDieResult(1, 10), // entry hall -> Empty
       forDieResult(1, 10), // guard room -> Empty
     ])
@@ -138,5 +140,23 @@ describe('generateTowerSite', () => {
     const objectiveRooms = site.rooms.filter((r) => r.isObjectiveRoom)
     expect(objectiveRooms).toHaveLength(1)
     expect(objectiveRooms[0].id).toBe('entry-hall')
+  })
+
+  // Regression coverage for the 2026-07-06 monster-theming fix (see generateDungeon.test.ts's
+  // sibling tests for the full incident) — Tower has no SiteType, so before this fix its rooms
+  // rolled monsters from the entire unweighted pool with no theme at all.
+  it('every non-Boss monster room shares the same theme category, and Boss Monster is never Animal/Insect', () => {
+    for (const seed of [1, 2, 3, 42, 12345, 777, 2024]) {
+      const site = generateTowerSite(seededRng(seed))
+      const nonBossCategories = new Set(
+        site.rooms.filter((r) => r.monster && r.roomType !== 'Boss Monster').map((r) => r.monster!.category),
+      )
+      expect(nonBossCategories.size).toBeLessThanOrEqual(1)
+      for (const room of site.rooms) {
+        if (room.roomType === 'Boss Monster' && room.monster) {
+          expect(['Animal', 'Insect']).not.toContain(room.monster.category)
+        }
+      }
+    }
   })
 })

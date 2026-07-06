@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MONSTERS, NPC_TYPES, rollMonster, rollNpcType } from './monsterTables'
+import { MONSTERS, NPC_TYPES, BOSS_EXCLUDED_CATEGORIES, rollMonster, rollMonsterTheme, rollNpcType } from './monsterTables'
 
 function seededRng(seed: number): () => number {
   let state = seed >>> 0
@@ -49,25 +49,74 @@ describe('MONSTERS', () => {
     }
   })
 
-  it('siteType biases category selection toward that site\'s themed categories', () => {
-    const rng = seededRng(99)
-    const categoryCounts: Record<string, number> = {}
-    for (let i = 0; i < 500; i++) {
-      const { category } = rollMonster(rng, { siteType: 'Tomb' })
-      categoryCounts[category] = (categoryCounts[category] ?? 0) + 1
-    }
-    // Tomb weights Undead at 6x baseline — expect it to dominate the distribution.
-    const undeadShare = (categoryCounts['Undead'] ?? 0) / 500
-    expect(undeadShare).toBeGreaterThan(0.3)
-  })
-
-  it('siteType + excludeMundane combine (Boss Monster in a Tomb still excludes mundane entries)', () => {
+  it('a locked theme always returns an entry from that category', () => {
     for (const seed of [1, 42, 12345]) {
       const rng = seededRng(seed)
       for (let i = 0; i < 50; i++) {
-        expect(rollMonster(rng, { siteType: 'Cave', excludeMundane: true }).mundane).toBeFalsy()
+        expect(rollMonster(rng, { theme: 'Undead' }).category).toBe('Undead')
       }
     }
+  })
+
+  it('theme + excludeMundane combine (Boss Monster still excludes mundane entries within the theme)', () => {
+    for (const seed of [1, 42, 12345]) {
+      const rng = seededRng(seed)
+      for (let i = 0; i < 50; i++) {
+        const monster = rollMonster(rng, { theme: 'Animal', excludeMundane: true })
+        expect(monster.mundane).toBeFalsy()
+      }
+    }
+  })
+
+  it('excludeCategories falls back to a different category when the locked theme itself is excluded', () => {
+    for (const seed of [1, 42, 12345]) {
+      const rng = seededRng(seed)
+      for (let i = 0; i < 50; i++) {
+        const monster = rollMonster(rng, { theme: 'Animal', excludeCategories: BOSS_EXCLUDED_CATEGORIES })
+        expect(BOSS_EXCLUDED_CATEGORIES).not.toContain(monster.category)
+      }
+    }
+  })
+
+  it('excludeCategories has no effect when the locked theme is already allowed', () => {
+    for (const seed of [1, 42, 12345]) {
+      const rng = seededRng(seed)
+      for (let i = 0; i < 20; i++) {
+        expect(rollMonster(rng, { theme: 'Undead', excludeCategories: BOSS_EXCLUDED_CATEGORIES }).category).toBe('Undead')
+      }
+    }
+  })
+})
+
+describe('rollMonsterTheme', () => {
+  it('always returns a real category', () => {
+    const categories = new Set(MONSTERS.map((m) => m.category))
+    for (const seed of [1, 42, 12345]) {
+      const rng = seededRng(seed)
+      for (let i = 0; i < 20; i++) {
+        expect(categories.has(rollMonsterTheme(rng))).toBe(true)
+      }
+    }
+  })
+
+  it('siteType biases the theme pick toward that site\'s themed categories', () => {
+    const rng = seededRng(99)
+    const categoryCounts: Record<string, number> = {}
+    for (let i = 0; i < 500; i++) {
+      const category = rollMonsterTheme(rng, 'Tomb')
+      categoryCounts[category] = (categoryCounts[category] ?? 0) + 1
+    }
+    // Tomb weights Undead at 6x baseline (~0.077 uniform across 13 categories) — expect it to
+    // dominate the distribution well above that baseline.
+    const undeadShare = (categoryCounts['Undead'] ?? 0) / 500
+    expect(undeadShare).toBeGreaterThan(0.25)
+  })
+
+  it('with no siteType (Tower/Keep), picks uniformly across all categories rather than always the same one', () => {
+    const rng = seededRng(7)
+    const seen = new Set<string>()
+    for (let i = 0; i < 100; i++) seen.add(rollMonsterTheme(rng))
+    expect(seen.size).toBeGreaterThan(1)
   })
 })
 
