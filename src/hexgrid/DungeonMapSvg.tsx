@@ -1,19 +1,20 @@
-// Renders a generated dungeon's real BSP room layout. Two visual styles, chosen by the caller
-// via `caveStyle` based on the dungeon's site type (see DungeonSiteView.tsx): Cave/Deep
-// tunnels get organic cavern blobs with a crosshatched rock-textured wall band (matching a
-// reference hand-drawn cave map the user provided); Tomb/Ruins keep rectangular built rooms,
-// with a matching visual polish (thicker walls, a brick-textured wall band) rather than a full
-// redesign — a tomb built by masons plausibly has straight walls where a natural cave doesn't.
-// Both styles share a VTT-style square-grid background and render corridors as real polygon
-// "capsule" bands (floor + wall-band, same double-layer technique as rooms) rather than a bare
-// line, so passages actually show — the earlier single-line version got hidden almost entirely
-// under directly-touching rooms with no gap between them (rectangular rooms here are inset from
-// their true rect bounds specifically so a visible gap exists for the corridor to occupy; cave
-// blobs are naturally smaller than their room's rect already, so no extra inset is needed there).
+// Renders a generated dungeon's real BSP room layout in an "old-school TSR module map" style —
+// a two-tone blue-field/white-room scheme, replacing the earlier "painted VTT" look (warm
+// terracotta colors, brick/crosshatch wall textures). Reference: an Inkscape tutorial for
+// hand-drawn-style VTT dungeon maps (crookedstaff.co.uk, "Drawing old-school dungeon maps") —
+// solid blue = unexplored rock, white = traversable space, a thin blue grid inside rooms/
+// corridors, rounded corridor ends, and small door-rectangles bridging connected spaces. Two
+// room-shape styles, chosen by the caller via `caveStyle` based on the dungeon's site type (see
+// DungeonSiteView.tsx): Cave/Deep tunnels get organic cavern blobs; Tomb/Ruins keep rectangular
+// built rooms — a distinction from geometry, not wall texture (texture no longer exists in this
+// two-tone scheme). Corridors render as two stacked strokes (blue "wall" + white/grid "floor")
+// with round line caps, which is what produces the reference's rounded corridor-end caps with no
+// extra geometry. Rectangular rooms stay inset from their true rect bounds so a visible gap
+// exists for corridors to occupy (BSP rooms tile edge-to-edge with zero gap otherwise); cave
+// blobs are naturally smaller than their room's rect already, so no extra inset is needed there.
 
 import {
   blobToPolygon,
-  corridorPolygon,
   generateBlobShape,
   generateOrganicCorridorWaypoints,
   seedForConnection,
@@ -38,9 +39,47 @@ export type DungeonMapSvgProps = {
   unitSize?: number
 }
 
-const WALL_THICKNESS_UNITS = 0.5
+const TSR_BLUE = '#2f6fed'
+const TSR_BLUE_LIGHT = '#bcd4fb'
+
+const WALL_STROKE_UNITS = 0.22
 const CORRIDOR_HALF_WIDTH_UNITS = 0.55
 const RECT_ROOM_INSET_UNITS = 0.9 // gap left around rectangular rooms so corridors stay visible
+const DOOR_THICKNESS_UNITS = 0.35
+
+function pointsAttr(polygon: Point[]): string {
+  return polygon.map((p) => `${p.x},${p.y}`).join(' ')
+}
+
+// Where a ray from a rectangle's center towards `towards` exits the rectangle's boundary —
+// used so a rect-style corridor's visible line only spans the true gap between two rooms'
+// boundaries, not the full center-to-center diagonal (which, left undipped, pokes out past a
+// room's edge as an ugly diagonal spur whenever two rooms aren't aligned on the same axis; the
+// old "painted VTT" palette hid this under its busier textures, but the two-tone TSR scheme's
+// flat blue background makes any diagonal spur immediately obvious).
+function exitPointFromRect(center: Point, halfWidth: number, halfHeight: number, towards: Point): Point {
+  const dx = towards.x - center.x
+  const dy = towards.y - center.y
+  if (dx === 0 && dy === 0) return center
+  const tx = dx !== 0 ? halfWidth / Math.abs(dx) : Infinity
+  const ty = dy !== 0 ? halfHeight / Math.abs(dy) : Infinity
+  const t = Math.min(tx, ty)
+  return { x: center.x + dx * t, y: center.y + dy * t }
+}
+
+// Ordinary parametric star-polygon construction — a rendering-cosmetic detail specific to this
+// style's objective-room "statue" icon (echoing the reference's own circle+star symbol for
+// notable features), not shared geometry, so it lives here rather than in caveRenderShapes.ts.
+function starPolygonPoints(center: Point, outerRadius: number, innerRadius: number, points = 5): Point[] {
+  const result: Point[] = []
+  const step = Math.PI / points
+  for (let i = 0; i < points * 2; i++) {
+    const r = i % 2 === 0 ? outerRadius : innerRadius
+    const angle = i * step - Math.PI / 2
+    result.push({ x: center.x + Math.cos(angle) * r, y: center.y + Math.sin(angle) * r })
+  }
+  return result
+}
 
 export function DungeonMapSvg({ rooms, connections, caveStyle = false, unitSize = 24 }: DungeonMapSvgProps) {
   if (rooms.length === 0) return null
@@ -52,10 +91,11 @@ export function DungeonMapSvg({ rooms, connections, caveStyle = false, unitSize 
   const height = maxY * unitSize + pad * 2
 
   const byId = new Map(rooms.map((r) => [r.id, r]))
-  const wallThickness = WALL_THICKNESS_UNITS * unitSize
+  const wallStroke = WALL_STROKE_UNITS * unitSize
   const corridorHalfWidth = CORRIDOR_HALF_WIDTH_UNITS * unitSize
   const roomInset = RECT_ROOM_INSET_UNITS * unitSize
-  const wallPatternId = caveStyle ? 'dungeon-crosshatch' : 'dungeon-brick'
+  const doorThickness = DOOR_THICKNESS_UNITS * unitSize
+  const gridTile = unitSize / 3
 
   function toPx(x: number, y: number): Point {
     return { x: x * unitSize + pad, y: y * unitSize + pad }
@@ -65,60 +105,80 @@ export function DungeonMapSvg({ rooms, connections, caveStyle = false, unitSize 
     return toPx(rect.x + rect.width / 2, rect.y + rect.height / 2)
   }
 
-  function pointsAttr(polygon: Point[]): string {
-    return polygon.map((p) => `${p.x},${p.y}`).join(' ')
+  // Rect-style rooms' actual rendered bounds (after the corridor-visibility inset) — shared by
+  // both the connection-clipping math above and the room-rendering loop below, so they always
+  // agree on exactly where a room's boundary is.
+  function outerRectPx(rect: DungeonMapRoomData['rect']) {
+    return {
+      x: rect.x * unitSize + pad + roomInset,
+      y: rect.y * unitSize + pad + roomInset,
+      width: Math.max(0, rect.width * unitSize - roomInset * 2),
+      height: Math.max(0, rect.height * unitSize - roomInset * 2),
+    }
   }
 
-  function labelFor(r: DungeonMapRoomData, center: Point, fontSize: number) {
+  // The room-number circle (colored by ROOM_TYPE_COLORS, same value the room used to be filled
+  // with entirely) does double duty as both "keep numbered labels" and "keep a subtle room-type
+  // indicator" — one glance-able symbol instead of two competing ones.
+  function roomMarker(r: DungeonMapRoomData, center: Point, fontSize: number) {
+    const radius = fontSize * 0.9
     return (
-      <text
-        x={center.x}
-        y={center.y}
-        textAnchor="middle"
-        dominantBaseline="middle"
-        fontSize={fontSize}
-        fill="#f3f4f6"
-        stroke="#000000"
-        strokeWidth={fontSize * 0.15}
-        paintOrder="stroke"
-        style={{ pointerEvents: 'none', fontWeight: 700 }}
-      >
-        {r.label}
-      </text>
+      <g style={{ pointerEvents: 'none' }}>
+        <circle cx={center.x} cy={center.y} r={radius} fill={r.color} stroke={TSR_BLUE} strokeWidth={wallStroke * 0.6} />
+        <text
+          x={center.x}
+          y={center.y}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fontSize={fontSize}
+          fill="#ffffff"
+          stroke="#000000"
+          strokeWidth={fontSize * 0.12}
+          paintOrder="stroke"
+          style={{ fontWeight: 700 }}
+        >
+          {r.label}
+        </text>
+      </g>
+    )
+  }
+
+  // The objective room's "statue" icon — a circle-with-star, echoing the reference's own symbol
+  // for a notable fixed feature — replaces the plain star-glyph label used previously. The star
+  // is filled with the room's own type color so the room-type-at-a-glance property survives even
+  // for the one room that doesn't get the plain numbered marker.
+  function objectiveMarker(r: DungeonMapRoomData, center: Point, fontSize: number) {
+    const outerRadius = fontSize * 1.1
+    const starOuter = fontSize * 0.9
+    const starInner = fontSize * 0.45
+    return (
+      <g style={{ pointerEvents: 'none' }}>
+        <circle cx={center.x} cy={center.y} r={outerRadius} fill="#ffffff" stroke={TSR_BLUE} strokeWidth={wallStroke * 0.6} />
+        <polygon points={pointsAttr(starPolygonPoints(center, starOuter, starInner))} fill={r.color} stroke={TSR_BLUE} strokeWidth={wallStroke * 0.3} />
+      </g>
     )
   }
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: '100%', background: '#0d0d0d' }}>
+    <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: '100%', background: TSR_BLUE }}>
       <defs>
-        <pattern id="dungeon-grid" width={10} height={10} patternUnits="userSpaceOnUse">
-          <rect width={10} height={10} fill="#e8ddc0" />
-          <path d="M10,0 L0,0 L0,10" fill="none" stroke="#d3c6a0" strokeWidth={0.5} />
-        </pattern>
-        <pattern id="dungeon-crosshatch" width={8} height={8} patternUnits="userSpaceOnUse">
-          <rect width={8} height={8} fill="#4a4136" />
-          <path d="M0,8 L8,0 M-4,4 L4,-4 M4,12 L12,4" stroke="#2e2820" strokeWidth={1} />
-          <path d="M0,0 L8,8 M-4,4 L4,12 M4,-4 L12,4" stroke="#2e2820" strokeWidth={1} opacity={0.6} />
-        </pattern>
-        <pattern id="dungeon-brick" width={16} height={8} patternUnits="userSpaceOnUse">
-          <rect width={16} height={8} fill="#5c5346" />
-          <path
-            d="M0,0 L16,0 M0,4 L16,4 M0,8 L16,8 M0,0 L0,4 M8,0 L8,4 M16,0 L16,4 M-4,4 L-4,8 M4,4 L4,8 M12,4 L12,8"
-            fill="none"
-            stroke="#2e2820"
-            strokeWidth={0.6}
-          />
+        <pattern id="tsr-grid" width={gridTile} height={gridTile} patternUnits="userSpaceOnUse">
+          <rect width={gridTile} height={gridTile} fill="#ffffff" />
+          <path d={`M ${gridTile},0 L 0,0 L 0,${gridTile}`} fill="none" stroke={TSR_BLUE_LIGHT} strokeWidth={1} />
         </pattern>
       </defs>
 
-      <rect x={0} y={0} width={width} height={height} fill="url(#dungeon-grid)" />
+      <rect x={0} y={0} width={width} height={height} fill={TSR_BLUE} />
 
       {/* Corridors — drawn first so rooms (on top) hide the parts that overlap them, leaving
-          only the visible span between rooms. Cave-style corridors wind (a few deterministic
-          waypoints, rendered as a smooth path) rather than running dead straight — several
-          perfectly straight ribbons converging on one room read as a network diagram, not a
-          natural passage; Tomb/Ruins keep straight halls (a built structure plausibly has
-          them). */}
+          only the visible span between rooms. Both styles use the same two-stroke technique
+          (blue "wall" stroke + grid-pattern "floor" stroke, both round-capped) — the round cap
+          is what produces the reference's rounded corridor-end look, with no extra geometry.
+          Cave-style corridors wind (a few deterministic waypoints via a smoothed path) rather
+          than running dead straight; Tomb/Ruins keep straight halls (a built structure plausibly
+          has them) and additionally get a door-rectangle marker at the midpoint, matching the
+          reference's convention — skipped for cave-style, since a straight perpendicular door
+          crossing a winding organic passage wouldn't read correctly. */}
       {connections.map(([aId, bId]) => {
         const a = byId.get(aId)
         const b = byId.get(bId)
@@ -134,22 +194,40 @@ export function DungeonMapSvg({ rooms, connections, caveStyle = false, unitSize 
               <path
                 d={pathData}
                 fill="none"
-                stroke={`url(#${wallPatternId})`}
-                strokeWidth={(corridorHalfWidth + wallThickness) * 2}
+                stroke={TSR_BLUE}
+                strokeWidth={(corridorHalfWidth + wallStroke) * 2}
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
-              <path d={pathData} fill="none" stroke="#e8ddc0" strokeWidth={corridorHalfWidth * 2} strokeLinecap="round" strokeLinejoin="round" />
+              <path d={pathData} fill="none" stroke="url(#tsr-grid)" strokeWidth={corridorHalfWidth * 2} strokeLinecap="round" strokeLinejoin="round" />
             </g>
           )
         }
 
-        const wallPoly = corridorPolygon(ca, cb, corridorHalfWidth + wallThickness)
-        const floorPoly = corridorPolygon(ca, cb, corridorHalfWidth)
+        const outerA = outerRectPx(a.rect)
+        const outerB = outerRectPx(b.rect)
+        const exitA = exitPointFromRect(ca, outerA.width / 2, outerA.height / 2, cb)
+        const exitB = exitPointFromRect(cb, outerB.width / 2, outerB.height / 2, ca)
+
+        const angleRad = Math.atan2(exitB.y - exitA.y, exitB.x - exitA.x)
+        const angleDeg = (angleRad * 180) / Math.PI
+        const mid = { x: (exitA.x + exitB.x) / 2, y: (exitA.y + exitB.y) / 2 }
+        const doorSpan = corridorHalfWidth * 2
+
         return (
           <g key={`${aId}-${bId}`}>
-            <polygon points={pointsAttr(wallPoly)} fill={`url(#${wallPatternId})`} />
-            <polygon points={pointsAttr(floorPoly)} fill="#e8ddc0" />
+            <line x1={exitA.x} y1={exitA.y} x2={exitB.x} y2={exitB.y} stroke={TSR_BLUE} strokeWidth={(corridorHalfWidth + wallStroke) * 2} strokeLinecap="round" />
+            <line x1={exitA.x} y1={exitA.y} x2={exitB.x} y2={exitB.y} stroke="url(#tsr-grid)" strokeWidth={corridorHalfWidth * 2} strokeLinecap="round" />
+            <rect
+              x={mid.x - doorSpan / 2}
+              y={mid.y - doorThickness / 2}
+              width={doorSpan}
+              height={doorThickness}
+              fill="#ffffff"
+              stroke={TSR_BLUE}
+              strokeWidth={wallStroke * 0.6}
+              transform={`rotate(${angleDeg + 90} ${mid.x} ${mid.y})`}
+            />
           </g>
         )
       })}
@@ -157,51 +235,25 @@ export function DungeonMapSvg({ rooms, connections, caveStyle = false, unitSize 
       {rooms.map((r) => {
         const center = centerPx(r.rect)
         const fontSize = Math.min(unitSize * 0.5, 16)
+        const strokeWidth = r.highlighted ? wallStroke * 2.2 : wallStroke
 
         if (caveStyle) {
           const baseRadius = Math.min(r.rect.width, r.rect.height) * unitSize * 0.46
           const shape = generateBlobShape(seedForRect(r.rect))
-          const wallPoly = blobToPolygon(center, baseRadius, shape, wallThickness)
           const floorPoly = blobToPolygon(center, baseRadius, shape, 0)
           return (
             <g key={r.id} data-room-id={r.id} onClick={r.onClick} style={{ cursor: r.onClick ? 'pointer' : 'default' }}>
-              <polygon
-                points={pointsAttr(wallPoly)}
-                fill={`url(#${wallPatternId})`}
-                stroke={r.highlighted ? '#ffffff' : 'none'}
-                strokeWidth={r.highlighted ? 3 : 0}
-              />
-              <polygon points={pointsAttr(floorPoly)} fill={r.color} />
-              {labelFor(r, center, fontSize)}
+              <polygon points={pointsAttr(floorPoly)} fill="url(#tsr-grid)" stroke={TSR_BLUE} strokeWidth={strokeWidth} />
+              {r.highlighted ? objectiveMarker(r, center, fontSize) : roomMarker(r, center, fontSize)}
             </g>
           )
         }
 
-        const outer = {
-          x: r.rect.x * unitSize + pad + roomInset,
-          y: r.rect.y * unitSize + pad + roomInset,
-          width: Math.max(0, r.rect.width * unitSize - roomInset * 2),
-          height: Math.max(0, r.rect.height * unitSize - roomInset * 2),
-        }
-        const inner = {
-          x: outer.x + wallThickness,
-          y: outer.y + wallThickness,
-          width: Math.max(0, outer.width - wallThickness * 2),
-          height: Math.max(0, outer.height - wallThickness * 2),
-        }
+        const outer = outerRectPx(r.rect)
         return (
           <g key={r.id} data-room-id={r.id} onClick={r.onClick} style={{ cursor: r.onClick ? 'pointer' : 'default' }}>
-            <rect
-              x={outer.x}
-              y={outer.y}
-              width={outer.width}
-              height={outer.height}
-              fill={`url(#${wallPatternId})`}
-              stroke={r.highlighted ? '#ffffff' : 'none'}
-              strokeWidth={r.highlighted ? 3 : 0}
-            />
-            <rect x={inner.x} y={inner.y} width={inner.width} height={inner.height} fill={r.color} />
-            {labelFor(r, center, fontSize)}
+            <rect x={outer.x} y={outer.y} width={outer.width} height={outer.height} fill="url(#tsr-grid)" stroke={TSR_BLUE} strokeWidth={strokeWidth} />
+            {r.highlighted ? objectiveMarker(r, center, fontSize) : roomMarker(r, center, fontSize)}
           </g>
         )
       })}

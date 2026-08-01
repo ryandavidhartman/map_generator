@@ -657,6 +657,46 @@ of it, across two rounds** (plan updated accordingly):
    (connected-component "keep largest cluster" trim + adjacency-gated
    Ocean placement) — see the "Neighbor-weighted terrain generation"
    section of the plan doc for specifics and file:line citations.
+6. **Site-map renderer visual rewrite (TSR style) — Dungeon done
+   2026-08-01, browser-verified; Settlement/Keep/Tower/Camp not started.**
+   Confirmed-wanted full replacement (not a style toggle) of every "painted
+   VTT" renderer with an "old-school TSR module map" look — held behind
+   Settlement NPC population (item 2.d above) until that shipped, then
+   picked up ahead of Mongo/neighbor-weighted terrain since the user found
+   it more appealing to work on next. Per this project's established
+   pattern (every prior visual revision started from a concrete reference
+   image before any code was touched), work only starts once a reference
+   exists for that specific site kind — confirmed explicitly with the user
+   this is a per-site-kind rollout, not one big-bang rewrite.
+   - ✅ **Dungeon (`DungeonMapSvg.tsx`) — done, browser-verified.**
+     Reference: an Inkscape tutorial for hand-drawn-style VTT dungeon maps
+     (crookedstaff.co.uk, "Drawing old-school dungeon maps," parts 1-3) —
+     fetched and the actual example image downloaded/viewed directly
+     (not just described), revealing a solid-blue-field/white-room
+     two-tone scheme (closer to a modern "Dyson Logos"-style VTT battle
+     map than literal black line-art on paper — this corrected an earlier,
+     pre-reference paraphrase of the ask). Confirmed scope questions before
+     coding: adopt the blue/white scheme exactly (not black-line-art);
+     still add numbered room labels despite the reference not having any
+     (GM usability); keep a subtle room-type indicator (not full color
+     fill, not fully dropped either); keep Cave/Deep tunnels' organic blob
+     geometry, just recolored (preserves the natural-vs-built distinction
+     from the earlier cave-rendering revision, orthogonal to color); add
+     door-rectangle markers at corridor connections, matching the
+     reference. Full technical detail of what shipped is in
+     `hexgrid/DungeonMapSvg.tsx`'s entry in the Architecture section below
+     (palette, room markers, corridor technique, the `exitPointFromRect`
+     bowtie-corridor bug fix). 318/318 Vitest tests still pass (no
+     generation-layer code touched, purely rendering), `npx tsc -b`/
+     `npm run build` clean. Browser-verified via the `/poi/:n` review route
+     across all 4 dungeon site types (Tomb, Ruins, Deep tunnels, Cave):
+     correct blue/white two-tone rendering, in-room grid, rounded corridor
+     ends, door markers on Tomb/Ruins, colored numbered room markers,
+     objective circle-star icon, room click-to-expand still works
+     (`data-room-id` preserved), zero console errors.
+   - **Settlement, Keep, Tower, Camp — not started, no reference image
+     yet for any of them.** Each needs its own reference-image check-in
+     before work starts, per the confirmed per-site-kind rollout above.
 
 Full design detail for all of the above: `docs/plan-sites-settlements-mongo.md`.
 
@@ -943,21 +983,72 @@ src/
                         recomputed as the frontier grows, so revealing new hexes
                         doesn't yank the camera away from a panned/zoomed view.
   hexgrid/DungeonMapSvg.tsx  Renders a generated dungeon's real BSP room
-                        layout in one of two styles picked by the `caveStyle`
-                        prop (DungeonSiteView.tsx sets it from site.siteType):
-                        Cave/Deep tunnels get organic cavern blobs (via
-                        engine/caveRenderShapes.ts) with a crosshatch
-                        SVG-pattern wall band; Tomb/Ruins keep rectangular
-                        rooms (src/engine/dungeonLayout.ts) with a
-                        brick-pattern wall band. Both share a VTT-style grid
-                        background pattern and render corridors as real
-                        wall-band+floor polygon bands (not a bare line) —
-                        rectangular rooms are deliberately inset from their
-                        true rect bounds so a visible gap exists for the
-                        corridor to occupy (BSP rooms tile edge-to-edge with
-                        zero gap otherwise, which is why corridors were
-                        barely visible before this). data-room-id Playwright
-                        convention preserved.
+                        layout in one of two GEOMETRY styles picked by the
+                        `caveStyle` prop (DungeonSiteView.tsx sets it from
+                        site.siteType): Cave/Deep tunnels get organic cavern
+                        blobs (via engine/caveRenderShapes.ts, geometry
+                        unchanged since the cave-rendering revision);
+                        Tomb/Ruins keep rectangular rooms
+                        (src/engine/dungeonLayout.ts). **Rewritten
+                        2026-08-01 to an "old-school TSR module map" two-tone
+                        visual language**, replacing the earlier "painted
+                        VTT" look (warm terracotta colors, brick/crosshatch
+                        wall-band textures) — see "Site-map renderer visual
+                        rewrite (TSR style)" in Status below for the full
+                        story and reference. Solid blue field (`TSR_BLUE`,
+                        `#2f6fed`) = unexplored rock; white/grid-patterned
+                        fill (`tsr-grid` SVG pattern) = traversable room/
+                        corridor space; walls are just a blue stroke on the
+                        room/corridor shape itself (no separate wall-band
+                        polygon or texture pattern anymore — a real
+                        simplification, one shape per room instead of two).
+                        Corridors render as two stacked strokes (blue "wall"
+                        + grid-pattern "floor", both `strokeLinecap="round"`)
+                        along a straight line (Tomb/Ruins) or a winding
+                        smoothed path (Cave/Deep tunnels, unchanged
+                        waypoint logic from caveRenderShapes.ts) — the round
+                        cap is what produces the reference's rounded
+                        corridor-end look, no extra geometry needed.
+                        Tomb/Ruins corridors additionally render a small
+                        door-rectangle at their midpoint (rotated
+                        perpendicular to the corridor's direction via
+                        `transform="rotate(...)"`), matching the reference's
+                        door convention; Cave/Deep tunnels skip this (a
+                        straight door crossing a winding organic passage
+                        wouldn't read correctly). **Real bug found and fixed
+                        same pass**: an early version stroked corridors
+                        straight from room-center to room-center and relied
+                        on room shapes (drawn on top) to visually hide the
+                        parts that overlap them — this left ugly diagonal
+                        "bowtie" spurs poking out past a room's edge
+                        whenever two connected rooms weren't aligned on the
+                        same axis, much more visible against the new flat
+                        blue background than it ever was under the old
+                        busier textured palette (the underlying geometry
+                        bug likely existed since phase 5, just hidden).
+                        Fixed via a new `exitPointFromRect` helper: clips
+                        each rect-style corridor's endpoints to exactly
+                        where the center-to-center ray exits each room's own
+                        boundary, so the visible line only ever spans the
+                        true gap between two rooms. Room markers changed
+                        from a bare stroked-text label to a small filled
+                        circle (colored by the room's existing
+                        `ROOM_TYPE_COLORS` value, previously used as a
+                        full-room fill) with the room number on top — one
+                        symbol doing double duty as both the numbered label
+                        and an at-a-glance room-type indicator. The
+                        objective room gets a "statue" icon instead (a
+                        circle with a 5-pointed star, star filled with the
+                        room's own type color) — a new local
+                        `starPolygonPoints` helper, ordinary parametric star
+                        construction, kept in this file rather than
+                        caveRenderShapes.ts since it's a rendering-cosmetic
+                        detail specific to this style, not shared geometry.
+                        `data-room-id` Playwright convention preserved;
+                        `DungeonMapRoomData`'s shape and
+                        `DungeonSiteView.tsx`'s wiring are both unchanged —
+                        purely a rendering-layer feature, same pattern as
+                        every prior visual revision in this project.
   hexgrid/SettlementMapSvg.tsx  Renders a generated settlement as an actual
                         city map, not a flat-color diagram (rewritten same
                         day as the first version — see Status above for the
@@ -1277,23 +1368,21 @@ Agreed build order (see Status above and the plan file for design detail):
    now exists in the plan file, informed by reviewing `shadowdark-rest`'s
    own hex map generator.
 
-**Confirmed but not yet scoped (2026-07-06; the "deferred behind Settlement
-NPC population" hold this was originally put on has now lifted, since that
-phase shipped 2026-08-01 — still not started, still needs a reference
-image):** a full **"old-school TSR style" visual rewrite**
-of every site-map renderer (Dungeon/Settlement/Keep/Tower/Camp — the
-current "painted VTT" look: warm terracotta buildings, brick/crosshatch
-patterns, organic cave blobs) — the user explicitly called the current
-renderers "fine as abstractions" but wants something closer to classic
-hand-drawn AD&D/Basic-D&D module maps (blue-line graph-paper grids, black
-line-art walls/corridors, numbered rooms, little-to-no color fill). This is
-a large, multi-renderer visual pass, not a small tweak — **do not start it
-without first getting a reference image from the user and confirming scope**
-(exactly like every other visual revision in this project's history: the
-settlement-building-footprint rewrite, the dungeon cave-rendering rewrite,
-and the Keep walled-compound rewrite all started from a concrete reference
-image before any code was touched). No reference image has been supplied
-for this one yet.
+**"Old-school TSR style" visual rewrite — in progress, Dungeon done, see
+Status item 6 above for full detail.** Started 2026-08-01 (the "deferred
+behind Settlement NPC population" hold lifted once that phase shipped, and
+the user chose to pick this up next ahead of Mongo/neighbor-weighted
+terrain). Confirmed as a full replacement of every "painted VTT" renderer
+(Dungeon/Settlement/Keep/Tower/Camp), not a style toggle, rolled out one
+site kind at a time as each gets its own reference image — exactly the
+same "reference image before any code" pattern as every prior visual
+revision in this project (settlement building-footprints, dungeon
+cave-rendering, Keep's walled compound). The actual reference that arrived
+turned out to be a solid-blue-field/white-room two-tone scheme, not the
+"black line-art on white paper" description originally guessed at before
+any reference existed — see Status item 6 for the corrected description.
+**Still needed**: reference images for Settlement, Keep, Tower, and Camp
+before any of those renderers can start.
 
 A few Phase-2-adjacent items intentionally deferred rather than built:
 a "Tomb" random-encounter table doesn't exist in the book, so dungeons of
