@@ -22,6 +22,11 @@ describe('generateSettlement', () => {
     for (const district of settlement.districts) {
       expect(district.pointsOfInterest.length).toBeGreaterThanOrEqual(1)
       expect(district.pointsOfInterest.length).toBeLessThanOrEqual(4)
+      for (const poi of district.pointsOfInterest) {
+        expect(poi.text).toBeTruthy()
+        expect(poi.npc.race).toBeDefined()
+        expect(poi.npc.profession).toBeDefined()
+      }
     }
   })
 

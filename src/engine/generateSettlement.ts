@@ -9,6 +9,7 @@ import {
   type DistrictType,
   type Alignment,
 } from '../data/settlementTables'
+import { rollSettlementNpc, type SettlementNpc } from '../data/npcTables'
 import {
   buildCityMask,
   buildRoadEdges,
@@ -20,6 +21,12 @@ import {
   type RoadEdge,
 } from './settlementLayout'
 
+// Settlement NPC population (confirmed 2026-07-06): every district POI gets a named-flavor NPC
+// attached (race + profession, from Appendix C's Urban Encounters tables — see npcTables.ts),
+// the same "every slot gets one, no keyword-matched subset" scope as the dungeon monster/NPC
+// population phase before it.
+export type DistrictPoi = { text: string; npc: SettlementNpc }
+
 export type District = {
   id: string
   index: number
@@ -29,7 +36,7 @@ export type District = {
   districtType: DistrictType
   districtTypeRoll: number
   alignment: Alignment
-  pointsOfInterest: string[]
+  pointsOfInterest: DistrictPoi[]
   isSeatOfGovernment: boolean
 }
 
@@ -59,7 +66,10 @@ export function generateSettlement(rng: Rng = Math.random, overrideSettlementTyp
     const districtType = districtTypeForRoll(districtTypeRoll, spec.diceSides)
     const alignment = alignmentForD6(rollDie(6, rng))
     const poiCount = rollDie(4, rng)
-    const pointsOfInterest = Array.from({ length: poiCount }, () => districtPoiForD6(districtType, rollDie(6, rng)))
+    const pointsOfInterest: DistrictPoi[] = Array.from({ length: poiCount }, () => ({
+      text: districtPoiForD6(districtType, rollDie(6, rng)),
+      npc: rollSettlementNpc(rng),
+    }))
 
     return {
       id: `district-${index}`,

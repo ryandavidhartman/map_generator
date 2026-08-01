@@ -307,8 +307,68 @@ of it, across two rounds** (plan updated accordingly):
       14 visible streets; a 3-district Village screenshot confirmed the
       style holds at small scale; district click-to-expand and Reroll
       Site both still work; zero console errors.
-   d. **Settlement NPC population — not started.** Reuses (b)'s Monster/NPC
-      engine to populate district POIs with named NPCs.
+   d. ✅ **Settlement NPC population — done, browser-verified 2026-08-01.**
+      Confirmed requirement, but sourced independently from (b)'s dungeon
+      Monster/NPC engine rather than reusing it directly — dungeons needed
+      a *creature* bestiary (`monsterTables.ts`, from the B/X monster
+      compilation's main body), while settlements needed *civilian*
+      NPCs, a different kind of content found in the same compilation's
+      **Appendix C: Random Encounters** → "Urban Encounters" section
+      (`~/dev/source/b_x/publication/monsters/combined-monsters.pdf`,
+      pp. 162-163) — not its dungeon/wilderness monster tables. Appendix D
+      ("Random Dungeons") was also reviewed in full and confirmed to have
+      **no NPC content at all** — it's dungeon-layout/room-dressing/trap
+      generation tooling, not applicable here.
+      Scope confirmed upfront (three quick decisions, all defaults taken):
+      exclude Appendix C's "Red-Light Professions" sub-table (tonal
+      mismatch, not used); every district POI gets an NPC (no
+      keyword-matched subset); name-only flavor (race + profession +
+      a 0-Level activity descriptor), no combat stats — same deferred
+      future-MongoDB-stat-block scope as the dungeon phase.
+      New `src/data/npcTables.ts`, transcribed verbatim from Appendix C:
+      `npcRaceForD100` (Dwarf/Elf/Gnome/Half-Elf/Halfling/Half-Orc/Human,
+      weighted), `urbanProfessionForD100` (17 weighted professions —
+      Bandit through Tradesman), `nobleClassForD100` (Noble Professions
+      sub-table: Normal Human/Fighter/Cleric, rolled only when the
+      profession roll lands on "Noble"), and `zeroLevelActivityTierForD5`
+      (the book's 5-tier Infirm/Sedentary/Active/Fit/Very Fit grouping,
+      each with its hp-dice notation, combat modifier, and example
+      occupations). **One deliberate non-verbatim addition, called out in
+      the file's own header comment**: the book gives no explicit die for
+      selecting among the 5 activity tiers (it's a GM-reference grouping,
+      not a roll table) — rolling 1d5 uniformly, independent of race/
+      profession, is this project's own addition on top of otherwise-
+      verbatim data. This means an occasional incongruous pairing is
+      possible (e.g. "Dwarf Labourer — Infirm," seen once during browser
+      verification) — accepted rather than inventing an unconfirmed
+      profession-to-tier mapping the source doesn't provide; revisit only
+      if it reads as a real problem in play. `rollSettlementNpc(rng)`
+      composes Race + Profession + (if Noble) Noble Class/Level + Activity
+      Tier as independent rolls, no cross-referencing — same shape as the
+      Rift generator's independent Origin/Effect/Stability rolls.
+      `generateSettlement.ts`: `District.pointsOfInterest` changed from
+      `string[]` to `DistrictPoi[] = {text, npc: SettlementNpc}[]` — every
+      POI slot gets its own independently-rolled NPC, generated in the
+      same per-district POI-rolling loop (no separate pass needed, unlike
+      the building-footprint pass which needed roads to exist first).
+      `SettlementView.tsx`'s district POI list now shows the NPC's race,
+      profession (and Noble class/level when applicable), and activity
+      tier flavor line beneath each POI's own text.
+      **Verification**: new `npcTables.test.ts` (12 tests: full 1-100
+      range coverage + boundary spot-checks for Race/Urban
+      Profession/Noble Class, 1-5 range coverage for the activity tier,
+      and `rollSettlementNpc` composition invariants — Noble-only gets
+      `nobleClass`, Fighter/Cleric nobles get a level in 5-12 (1d8+4),
+      Normal Human nobles get none, both branches confirmed to actually
+      occur across 500 seeds). `generateSettlement.test.ts` updated for
+      the new `DistrictPoi` shape. Full suite green: 318/318 Vitest tests
+      (12 new), `npx tsc -b`/`npm run build` clean. Browser-verified via
+      the `/poi/:n` review route (roll 150 = Village, roll 200 =
+      Metropolis): district POI lists rendered real varied NPC flavor
+      lines (e.g. "Human Merchant — Infirm (1d3 hp, -3 to hit/damage)",
+      "Elf Cleric — Active (1d4+1 hp, as 0-level Normal Human)") with
+      correct district expand/collapse and Reroll Site/Reroll POI both
+      still working; zero console errors.
    Confirmed scope: dungeons + settlements only for now, not overland
    random encounters. Full design detail, file:line citations into
    `shadowdark-rest`, and open questions for each sub-phase are in
@@ -722,7 +782,32 @@ src/
                         1-4 of 8 (Slums/Low/Artisan/Market), City reaches
                         Temple District but not University/Castle, and only
                         Metropolis reaches the full range. This tiering is
-                        intentional RAW — don't "fix" it later.
+                        intentional RAW — don't "fix" it later. Every
+                        district POI is a DistrictPoi ({text, npc}) — npc is
+                        a rollSettlementNpc(rng) result (data/npcTables.ts),
+                        rolled independently per POI slot in the same loop
+                        that rolls the POI text itself.
+  data/npcTables.ts     Settlement NPC population (name-only flavor: race +
+                        profession + a 0-Level activity descriptor, no
+                        combat stats — same deferred-stat-block scope as
+                        monsterTables.ts). Transcribed verbatim from the B/X
+                        compilation's Appendix C ("Random Encounters" →
+                        "Urban Encounters"), NOT Appendix D (reviewed in
+                        full, has no NPC content — pure dungeon-layout/
+                        dressing/trap tooling). npcRaceForD100/
+                        urbanProfessionForD100/nobleClassForD100 (Noble
+                        Professions sub-table, consulted only when the
+                        profession roll is "Noble") are exact book tables;
+                        zeroLevelActivityTierForD5 is the one deliberate
+                        non-verbatim addition — the book's 5-tier Infirm/
+                        Sedentary/Active/Fit/Very Fit grouping has no
+                        explicit selector die (it's a GM-reference table,
+                        not a roll table), so a uniform 1d5 was added,
+                        independent of race/profession (no invented
+                        profession-to-tier mapping). rollSettlementNpc(rng)
+                        composes all of the above as independent rolls, no
+                        cross-referencing — same shape as Rift's
+                        independent Origin/Effect/Stability rolls.
   engine/generateTavern.ts, generateShop.ts  Ephemeral, re-rollable
                         generators (ATT: not persisted onto a District).
   engine/rollEncounter.ts     rollEncounter(tableKey, rng) — d100 lookup.
@@ -1172,21 +1257,30 @@ hub-and-spoke starburst), an expanded Settlement Name table (d20/20 names,
 generated site instead of per room, plus a hard Boss Monster exclusion for
 Animal/Insect) — see Status items above for full detail on each.
 
+**Settlement NPC population (see Status item 2.d above): done, browser-
+verified 2026-08-01.** Every settlement district POI now carries a
+name-only-flavor NPC (race + profession + a 0-Level activity descriptor),
+sourced verbatim from the B/X compilation's Appendix C ("Random
+Encounters" → "Urban Encounters"), not Appendix D (which has no NPC
+content — pure dungeon-layout/dressing/trap tooling, confirmed by reading
+it in full).
+
 Agreed build order (see Status above and the plan file for design detail):
-1. **Settlement NPC population** (reuses the dungeon phase's Monster/NPC
-   engine) — confirmed next, starting the session after 2026-07-06.
-2. **Node/Express + MongoDB backend for multi-campaign persistence.** The
-   app still only saves one map to localStorage — no named/listable
-   campaigns, no server, no `.env`, nothing. Reuses a shared Atlas cluster
-   the user already has (new database, not the other project's) — see the
-   "Backend for MongoDB" section's "Reuse note" in the plan file.
-3. **Neighbor-weighted terrain generation**, including making Ocean
+1. **Node/Express + MongoDB backend for multi-campaign persistence.**
+   Confirmed next. The app still only saves one map to localStorage — no
+   named/listable campaigns, no server, no `.env`, nothing. Reuses a
+   shared Atlas cluster the user already has (new database, not the other
+   project's) — see the "Backend for MongoDB" section's "Reuse note" in
+   the plan file.
+2. **Neighbor-weighted terrain generation**, including making Ocean
    generation form sensible contiguous bodies — design sketch (not final)
    now exists in the plan file, informed by reviewing `shadowdark-rest`'s
    own hex map generator.
 
-**Confirmed but not yet scoped, deliberately deferred behind Settlement NPC
-population (2026-07-06):** a full **"old-school TSR style" visual rewrite**
+**Confirmed but not yet scoped (2026-07-06; the "deferred behind Settlement
+NPC population" hold this was originally put on has now lifted, since that
+phase shipped 2026-08-01 — still not started, still needs a reference
+image):** a full **"old-school TSR style" visual rewrite**
 of every site-map renderer (Dungeon/Settlement/Keep/Tower/Camp — the
 current "painted VTT" look: warm terracotta buildings, brick/crosshatch
 patterns, organic cave blobs) — the user explicitly called the current

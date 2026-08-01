@@ -85,7 +85,16 @@ function DistrictListItem({ district, expanded, onToggle }: { district: District
           </p>
           <ul>
             {district.pointsOfInterest.map((poi, i) => (
-              <li key={i}>{poi}</li>
+              <li key={i}>
+                {poi.text}
+                <br />
+                <span className="npc-flavor">
+                  {poi.npc.race} {poi.npc.profession}
+                  {poi.npc.nobleClass && poi.npc.nobleClass !== 'Normal Human' && ` (${poi.npc.nobleClass} ${poi.npc.nobleLevel})`}
+                  {' — '}
+                  {poi.npc.activityTier.tier} ({poi.npc.activityTier.hitDice} hp, {poi.npc.activityTier.combatAbility})
+                </span>
+              </li>
             ))}
           </ul>
 
