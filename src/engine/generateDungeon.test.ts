@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { generateDungeonSite } from './generateDungeon'
+import { dungeonLevelBandForDanger } from '../data/dungeonTables'
 
 // A scripted RNG: each call to Math.random() returns the next queued value.
 // rollDie(sides) computes floor(rng() * sides) + 1, so to force a specific die result `n`
@@ -32,6 +33,8 @@ describe('generateDungeonSite', () => {
       forDieResult(1, 6), // size d6 -> Small (5 rooms)
       forDieResult(3, 6), // type d6 -> Tomb
       forDieResult(6, 6), // danger d6 -> Deadly
+      0, // dungeon level roll (rollInRange within Deadly's 10-16 band)
+      0, // scenario roll (d10) — value irrelevant to this test
       0, // monster theme roll (site-wide, once) — no monster rooms below, value irrelevant
       0, 0, 0, 0, // BSP layout: 5 rooms needs 4 splits, 1 rng call each
       forDieResult(1, 10), // room 0 -> Empty
@@ -39,7 +42,11 @@ describe('generateDungeonSite', () => {
       forDieResult(1, 10), // room 2 -> Empty
       forDieResult(1, 10), // room 3 -> Empty
       forDieResult(9, 10), // room 4 -> Treasure
-      forDieResult(1, 6), // room 4 detail roll
+      forDieResult(1, 6), // room 4 detail roll -> 'Hidden' (not 'Guarded by monster', so a single Amount roll)
+      forDieResult(14, 20), // treasure amount roll -> gp row (1d4x100 gp)
+      forDieResult(1, 4), // gp dice roll
+      forDieResult(1, 20), // treasure container roll
+      forDieResult(2, 2), // container guard/hidden 50% check -> no guard
     ])
     const site = generateDungeonSite(rng)
     expect(site.kind).toBe('dungeon')
@@ -49,6 +56,7 @@ describe('generateDungeonSite', () => {
     expect(site.rooms).toHaveLength(5)
     expect(site.rooms[4].roomType).toBe('Treasure')
     expect(site.rooms[4].detail).toBe('Hidden')
+    expect(site.rooms[4].treasure?.amounts).toEqual([{ kind: 'coins', coinType: 'gp', amount: 100 * site.dungeonLevel }])
   })
 
   it('marks the single highest room-type roll as the objective room, first occurrence wins ties', () => {
@@ -56,6 +64,8 @@ describe('generateDungeonSite', () => {
       forDieResult(1, 6), // size -> Small (5 rooms)
       forDieResult(1, 6), // type -> Cave
       forDieResult(1, 6), // danger -> Unsafe
+      0, // dungeon level roll (rollInRange within Unsafe's 1-4 band)
+      0, // scenario roll (d10) — value irrelevant to this test
       0.85, // monster theme roll -> Monstrous (Cave weights it at 2x baseline; see the math in
       // this test's sibling below — chosen over Animal/Insect specifically so this test doesn't
       // hit Boss Monster's category-exclusion fallback, keeping the scripted rng sequence simple.
@@ -85,6 +95,8 @@ describe('generateDungeonSite', () => {
       forDieResult(1, 6), // size -> Small
       // no type roll consumed — overridden
       forDieResult(1, 6), // danger -> Unsafe
+      0, // dungeon level roll (rollInRange within Unsafe's 1-4 band)
+      0, // scenario roll (d10) — value irrelevant to this test
       0, // monster theme roll (site-wide, once) — no monster rooms below, value irrelevant
       0, 0, 0, 0, // BSP layout: 4 splits
       forDieResult(1, 10),
@@ -103,6 +115,10 @@ describe('generateDungeonSite', () => {
       expect([5, 8, 12]).toContain(site.rooms.length)
       expect(['Cave', 'Tomb', 'Deep tunnels', 'Ruins']).toContain(site.siteType)
       expect(['Unsafe', 'Risky', 'Deadly']).toContain(site.danger)
+      const band = dungeonLevelBandForDanger(site.danger)
+      expect(site.dungeonLevel).toBeGreaterThanOrEqual(band.min)
+      expect(site.dungeonLevel).toBeLessThanOrEqual(band.max)
+      expect(site.scenario.length).toBeGreaterThan(0)
 
       const objectiveRooms = site.rooms.filter((r) => r.isObjectiveRoom)
       expect(objectiveRooms).toHaveLength(1)
@@ -124,6 +140,12 @@ describe('generateDungeonSite', () => {
         const isMonsterType = room.roomType === 'Solo Monster' || room.roomType === 'Monster Mob' || room.roomType === 'Boss Monster'
         expect(Boolean(room.monster)).toBe(isMonsterType)
         expect(Boolean(room.npc)).toBe(room.roomType === 'NPC')
+        expect(Boolean(room.treasure)).toBe(room.roomType === 'Treasure')
+        expect(Boolean(room.trap)).toBe(room.roomType === 'Trap')
+        if (room.treasure) {
+          const expectedRolls = room.detail === 'Guarded by monster' ? 2 : 1
+          expect(room.treasure.amounts).toHaveLength(expectedRolls)
+        }
         if (room.monster) {
           expect(room.monster.name.length).toBeGreaterThan(0)
           expect(room.monster.category.length).toBeGreaterThan(0)

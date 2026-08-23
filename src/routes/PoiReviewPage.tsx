@@ -16,10 +16,13 @@ const REVIEW_HEX_ID = '0,0'
 // hexes and hope the 1-in-6 POI check + d200 roll happen to land on the row being reviewed.
 // Runs in its own throwaway MapProvider (persist={false}) so nothing here ever touches the real
 // campaign's localStorage save — see MapContext.tsx's `initialState`/`persist` props.
+const PARTY_LEVELS = Array.from({ length: 20 }, (_, i) => i + 1)
+
 export function PoiReviewPage() {
   const { n } = useParams<{ n: string }>()
   const navigate = useNavigate()
   const [terrain, setTerrain] = useState<Terrain>('Grassland')
+  const [partyLevel, setPartyLevel] = useState(1)
   const [rerollNonce, setRerollNonce] = useState(0)
 
   const roll = Number(n)
@@ -29,10 +32,10 @@ export function PoiReviewPage() {
     if (!rollIsValid) return null
     const poi = pointOfInterestForFeatureRoll(terrain, roll, Math.random)
     const hex = { id: REVIEW_HEX_ID, q: 0, r: 0, terrain, danger: 'Safe' as const, poi }
-    return { hexes: { [REVIEW_HEX_ID]: hex }, partyHexId: REVIEW_HEX_ID, selectedHexId: REVIEW_HEX_ID }
+    return { hexes: { [REVIEW_HEX_ID]: hex }, partyHexId: REVIEW_HEX_ID, selectedHexId: REVIEW_HEX_ID, partyLevel }
     // rerollNonce isn't read above — bumping it deliberately forces this memo (and thus the keyed
     // MapProvider below) to recompute with a fresh Math.random() roll for the same feature.
-  }, [terrain, roll, rollIsValid, rerollNonce])
+  }, [terrain, roll, rollIsValid, partyLevel, rerollNonce])
 
   return (
     <div className="hex-detail-page poi-review-page">
@@ -68,6 +71,16 @@ export function PoiReviewPage() {
             ))}
           </select>
         </label>
+        <label>
+          Party Level (gates wandering-encounter difficulty on generated sites)
+          <select value={partyLevel} onChange={(e) => setPartyLevel(Number(e.target.value))}>
+            {PARTY_LEVELS.map((level) => (
+              <option key={level} value={level}>
+                {level}
+              </option>
+            ))}
+          </select>
+        </label>
         <button type="button" onClick={() => setRerollNonce((v) => v + 1)}>
           Reroll POI
         </button>
@@ -78,7 +91,7 @@ export function PoiReviewPage() {
           Invalid roll — enter a number between {MIN_ROLL} and {MAX_ROLL} in the URL (e.g. /poi/135).
         </p>
       ) : (
-        <MapProvider key={`${roll}-${terrain}-${rerollNonce}`} initialState={initialState} persist={false}>
+        <MapProvider key={`${roll}-${terrain}-${partyLevel}-${rerollNonce}`} initialState={initialState} persist={false}>
           <PoiReviewBody />
         </MapProvider>
       )}

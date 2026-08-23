@@ -6,6 +6,8 @@
 import { rollDie, type Rng } from './dice'
 import { roomTypeForD10, roomDetailForType, ROOM_TYPE_NEEDS_TWO_ROLLS, type RoomType } from '../data/dungeonTables'
 import { rollMonster, rollNpcType, BOSS_EXCLUDED_CATEGORIES, type MonsterCategory, type MonsterEntry } from '../data/monsterTables'
+import { rollTreasure, type RolledTreasure } from './generateTreasure'
+import { rollTrap, type RolledTrap } from './generateDressing'
 
 // Room types that get a rolled creature attached, on top of their existing book-RAW flavor
 // descriptor (e.g. "Mighty Brute") — see monsterTables.ts for the name-only/no-stats scope.
@@ -20,6 +22,8 @@ export type RolledRoomContent = {
   detail?: string
   monster?: GeneratedMonster
   npc?: GeneratedNpc
+  treasure?: RolledTreasure
+  trap?: RolledTrap
 }
 
 // `theme` is the site's ONE locked monster category (from rollMonsterTheme, rolled once by the
@@ -28,7 +32,10 @@ export type RolledRoomContent = {
 // independently-rolled grab bag. Boss Monster additionally hard-excludes
 // BOSS_EXCLUDED_CATEGORIES (Animal/Insect) regardless of theme — even a themed "Animal" dungeon's
 // boss shouldn't be a giant ferret.
-export function rollRoomContent(rng: Rng, theme?: MonsterCategory): RolledRoomContent {
+// `dungeonLevel` scales a Treasure room's amount/magic-item-count per B/X's Table 12 note — see
+// generateTreasure.ts. Defaults to 1 (the minimum, and Shadowdark's own book has no depth
+// concept at all) so callers that don't care about treasure scaling don't need to thread it.
+export function rollRoomContent(rng: Rng, theme?: MonsterCategory, dungeonLevel = 1): RolledRoomContent {
   const roomTypeRoll = rollDie(10, rng)
   const roomType = roomTypeForD10(roomTypeRoll)
   const detail: string | undefined =
@@ -43,8 +50,16 @@ export function rollRoomContent(rng: Rng, theme?: MonsterCategory): RolledRoomCo
     ? rollMonster(rng, { theme, excludeMundane: isBoss, excludeCategories: isBoss ? BOSS_EXCLUDED_CATEGORIES : undefined })
     : undefined
   const npc: GeneratedNpc | undefined = roomType === 'NPC' ? { type: rollNpcType(rng) } : undefined
+  // Treasure is its own distinct Room Type outcome (not retroactively rolled for monster
+  // rooms) — the "guarded by a monster" bonus (roll the Amount table twice, +1 each) maps onto
+  // this room's own "Guarded by monster" detail result instead. See treasureTables.ts's header.
+  const treasure: RolledTreasure | undefined =
+    roomType === 'Treasure' ? rollTreasure(rng, dungeonLevel, detail === 'Guarded by monster') : undefined
+  // A concrete named mechanism + severity, additive to Shadowdark's existing 2-word Trap
+  // flavor tag above — see data/trapTables.ts's header.
+  const trap: RolledTrap | undefined = roomType === 'Trap' ? rollTrap(rng, dungeonLevel) : undefined
 
-  return { roomType, roomTypeRoll, detail, monster, npc }
+  return { roomType, roomTypeRoll, detail, monster, npc, treasure, trap }
 }
 
 // A "reroll-toward" bias, not a hard override (confirmed 2026-07-04, for Keep's Armory/Lord's
@@ -52,9 +67,9 @@ export function rollRoomContent(rng: Rng, theme?: MonsterCategory): RolledRoomCo
 // chance to land on one of them. A second full roll (detail/monster/npc included) is only ever
 // consumed when the first roll needs it — same conditional-consumption shape as the detail
 // sub-roll above, not a fixed extra cost every time.
-export function rollBiasedRoomContent(rng: Rng, biasedTowardTypes: RoomType[], theme?: MonsterCategory): RolledRoomContent {
-  const first = rollRoomContent(rng, theme)
+export function rollBiasedRoomContent(rng: Rng, biasedTowardTypes: RoomType[], theme?: MonsterCategory, dungeonLevel = 1): RolledRoomContent {
+  const first = rollRoomContent(rng, theme, dungeonLevel)
   if (biasedTowardTypes.includes(first.roomType)) return first
-  const second = rollRoomContent(rng, theme)
+  const second = rollRoomContent(rng, theme, dungeonLevel)
   return biasedTowardTypes.includes(second.roomType) ? second : first
 }

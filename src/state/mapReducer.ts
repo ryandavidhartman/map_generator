@@ -24,12 +24,18 @@ export type MapState = {
   hexes: Record<string, Hex>
   partyHexId: string | null
   selectedHexId: string | null
+  // Campaign-wide, GM-set (not derived) — gates B/X-sourced content that scales with party
+  // strength: wilderness monster category exclusions and Urban Encounter Level's "out of
+  // place" reroll (round 2 bug-fix follow-up, 2026-08-23 — see rollEncounter.ts). Defaults to 1,
+  // same as a freshly-started party.
+  partyLevel: number
 }
 
 export const EMPTY_MAP_STATE: MapState = {
   hexes: {},
   partyHexId: null,
   selectedHexId: null,
+  partyLevel: 1,
 }
 
 export type HexEditPatch = Partial<Pick<Hex, 'terrain' | 'danger' | 'poi'>>
@@ -43,6 +49,7 @@ export type MapAction =
   | { type: 'GENERATE_SITE'; hexId: string; rng?: Rng }
   | { type: 'REROLL_SITE'; hexId: string; rng?: Rng }
   | { type: 'NEW_MAP' }
+  | { type: 'SET_PARTY_LEVEL'; level: number }
 
 export function isRevealed(state: MapState, id: string): boolean {
   return id in state.hexes
@@ -71,6 +78,7 @@ export function mapReducer(state: MapState, action: MapAction): MapState {
         hexes: { [id]: startHex },
         partyHexId: id,
         selectedHexId: id,
+        partyLevel: 1,
       }
     }
 
@@ -148,6 +156,9 @@ export function mapReducer(state: MapState, action: MapAction): MapState {
 
     case 'NEW_MAP':
       return EMPTY_MAP_STATE
+
+    case 'SET_PARTY_LEVEL':
+      return { ...state, partyLevel: Math.max(1, Math.floor(action.level)) }
 
     default:
       return state

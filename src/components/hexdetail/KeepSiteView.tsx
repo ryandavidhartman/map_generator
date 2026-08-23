@@ -4,6 +4,9 @@ import type { KeepSite, KeepRoom } from '../../engine/generateKeep'
 import { KeepMapSvg, type KeepMapRoomData } from '../../hexgrid/KeepMapSvg'
 import { ROOM_TYPE_COLORS } from '../../data/siteColors'
 import { HexBaseInfo } from './HexBaseInfo'
+import { TreasureLine } from './TreasureLine'
+import { DressingRoller } from './DressingRoller'
+import { TrickRoller } from './TrickRoller'
 
 function roomLabel(room: KeepRoom): string {
   if (room.isObjectiveRoom) return '★'
@@ -31,12 +34,18 @@ export function KeepSiteView({ hex, site }: { hex: Hex; site: KeepSite }) {
       <section className="site-section">
         <div className="site-section-header">
           <h3>
-            {site.size} Keep — Danger: {site.danger}
+            {site.size} Keep — Danger: {site.danger} — Dungeon Level {site.dungeonLevel}
           </h3>
           <button type="button" onClick={() => dispatch({ type: 'REROLL_SITE', hexId: hex.id })}>
             Reroll Site
           </button>
         </div>
+
+        <p className="site-scenario">Scenario: {site.scenario}</p>
+        <p className="site-scenario">
+          Ruled by a level {site.approach.ownerLevel} {site.approach.ownerClass}, backed by {site.approach.patrol}. Reaction to the
+          party: {site.approach.reaction}.
+        </p>
 
         <div className="site-layout">
           <KeepMapSvg rooms={rooms} connections={site.connections} />
@@ -56,6 +65,14 @@ export function KeepSiteView({ hex, site }: { hex: Hex; site: KeepSite }) {
                 </p>
               )}
               {room.npc && <p>NPC: {room.npc.type}</p>}
+              {room.treasure && <TreasureLine treasure={room.treasure} />}
+              {room.trap && (
+                <p>
+                  Trap: {room.trap.name} <span className="room-tag">({room.trap.severity})</span>
+                </p>
+              )}
+              <DressingRoller />
+              <TrickRoller />
             </li>
           ))}
         </ol>

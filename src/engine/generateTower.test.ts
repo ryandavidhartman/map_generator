@@ -28,12 +28,18 @@ describe('generateTowerSite', () => {
     const rng = scripted([
       forDieResult(1, 6), // size d6 -> Small (level range 1-2)
       forDieResult(6, 6), // danger d6 -> Deadly
+      0, // dungeon level roll (rollInRange within Deadly's 10-16 band)
+      0, // scenario roll (d10) — value irrelevant to this test
       forDieResult(2, 2), // level count d2 -> range.min(1) + 2 - 1 = 2 levels
       0, // monster theme roll (site-wide, once) — no monster rooms below, value irrelevant
       forDieResult(1, 10), // entry hall room type -> Empty
       forDieResult(1, 10), // guard room room type -> Empty
       forDieResult(9, 10), // level 1 (top) room type -> Treasure
-      forDieResult(1, 6), // level 1 detail roll
+      forDieResult(1, 6), // level 1 detail roll -> 'Hidden' (not 'Guarded by monster')
+      forDieResult(14, 20), // treasure amount roll -> gp row (1d4x100 gp)
+      forDieResult(1, 4), // gp dice roll
+      forDieResult(1, 20), // treasure container roll
+      forDieResult(2, 2), // container guard/hidden 50% check -> no guard
     ])
     const site = generateTowerSite(rng)
     expect(site.kind).toBe('tower')
@@ -76,6 +82,13 @@ describe('generateTowerSite', () => {
       if (site.size === 'Small') expect([1, 2]).toContain(site.levelCount)
       if (site.size === 'Medium') expect([3, 4]).toContain(site.levelCount)
       if (site.size === 'Large') expect([5, 6]).toContain(site.levelCount)
+    }
+  })
+
+  it('always has a non-empty scenario', () => {
+    for (const seed of [1, 2, 3, 42, 12345]) {
+      const site = generateTowerSite(seededRng(seed))
+      expect(site.scenario.length).toBeGreaterThan(0)
     }
   })
 
@@ -125,10 +138,22 @@ describe('generateTowerSite', () => {
     }
   })
 
+  it('every room has treasure/trap iff its Room Type matches', () => {
+    for (const seed of [1, 2, 3, 42, 12345]) {
+      const site = generateTowerSite(seededRng(seed))
+      for (const room of site.rooms) {
+        expect(Boolean(room.treasure)).toBe(room.roomType === 'Treasure')
+        expect(Boolean(room.trap)).toBe(room.roomType === 'Trap')
+      }
+    }
+  })
+
   it('when the level count rolls the Small minimum of 1, the entry hall itself is the objective', () => {
     const rng = scripted([
       forDieResult(1, 6), // Small
       forDieResult(1, 6), // danger
+      0, // dungeon level roll (rollInRange within the danger-derived band)
+      0, // scenario roll (d10) — value irrelevant to this test
       forDieResult(1, 2), // level count d2 -> range.min(1) + 1 - 1 = 1 level
       0, // monster theme roll (site-wide, once) — no monster rooms below, value irrelevant
       forDieResult(1, 10), // entry hall -> Empty

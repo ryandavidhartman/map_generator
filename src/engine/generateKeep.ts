@@ -25,13 +25,23 @@
 // - Rendering reuses DungeonMapSvg unchanged (see keepLayout.ts) — that component only cares
 //   about rects + connections, not the algorithm that produced them.
 
-import { rollDie, type Rng } from './dice'
-import { siteSizeForD6, keepRoomCountRangeForSize, dungeonDangerForD6, type SiteSize, type RoomType } from '../data/dungeonTables'
+import { rollDie, rollInRange, type Rng } from './dice'
+import { siteSizeForD6, keepRoomCountRangeForSize, dungeonDangerForD6, dungeonLevelBandForDanger, dungeonScenarioForD10, type SiteSize, type RoomType } from '../data/dungeonTables'
 import type { DangerLevel } from '../data/tables'
 import { rollRoomContent, rollBiasedRoomContent, type GeneratedMonster, type GeneratedNpc } from './roomContent'
 import { rollMonsterTheme } from '../data/monsterTables'
 import { computeKeepLayout, type Rect } from './keepLayout'
 import { generateDungeonSite, type DungeonSite } from './generateDungeon'
+import type { RolledTreasure } from './generateTreasure'
+import type { RolledTrap } from './generateDressing'
+import {
+  castleOwnerClassForD3,
+  castleOwnerLevelRangeForClass,
+  castlePatrolForClass,
+  castleReactionForClass,
+  type CastleOwnerClass,
+  type CastleReaction,
+} from '../data/castleTables'
 
 const NAMED_SLOTS = ['Hall', 'Barracks', 'Armory', "Lord's Quarters"] as const
 type NamedSlot = (typeof NAMED_SLOTS)[number]
@@ -51,14 +61,26 @@ export type KeepRoom = {
   detail?: string
   monster?: GeneratedMonster
   npc?: GeneratedNpc
+  treasure?: RolledTreasure
+  trap?: RolledTrap
   isObjectiveRoom: boolean
   rect: Rect
+}
+
+export type KeepApproach = {
+  ownerClass: CastleOwnerClass
+  ownerLevel: number
+  patrol: string
+  reaction: CastleReaction
 }
 
 export type KeepSite = {
   kind: 'keep'
   size: SiteSize
   danger: DangerLevel
+  dungeonLevel: number
+  scenario: string
+  approach: KeepApproach
   rooms: KeepRoom[]
   connections: [string, string][]
 }
@@ -70,6 +92,17 @@ function slugify(name: string): string {
 export function generateKeepSite(rng: Rng = Math.random): KeepSite {
   const size = siteSizeForD6(rollDie(6, rng)).size
   const danger = dungeonDangerForD6(rollDie(6, rng))
+  const levelBand = dungeonLevelBandForDanger(danger)
+  const dungeonLevel = rollInRange(levelBand.min, levelBand.max, rng)
+  const scenario = dungeonScenarioForD10(rollDie(10, rng))
+  // Castle Encounters (Appendix C) — who rules this keep and how they react to the party
+  // approaching. Rolled once per site, independent of room contents (not tied to the Lord's
+  // Quarters room, which may resolve to an NPC, a monster, or nothing at all).
+  const ownerClass = castleOwnerClassForD3(rollDie(3, rng))
+  const ownerLevelRange = castleOwnerLevelRangeForClass(ownerClass)
+  const ownerLevel = rollInRange(ownerLevelRange.min, ownerLevelRange.max, rng)
+  const reaction = castleReactionForClass(ownerClass, rollDie(6, rng))
+  const approach: KeepApproach = { ownerClass, ownerLevel, patrol: castlePatrolForClass(ownerClass), reaction }
   const range = keepRoomCountRangeForSize(size)
   const aboveGroundRoomCount = range.min + rollDie(2, rng) - 1
 
@@ -86,14 +119,14 @@ export function generateKeepSite(rng: Rng = Math.random): KeepSite {
   const rooms: KeepRoom[] = []
   const connections: [string, string][] = []
 
-  const courtyardContent = rollRoomContent(rng, monsterTheme)
+  const courtyardContent = rollRoomContent(rng, monsterTheme, dungeonLevel)
   rooms.push({ id: 'courtyard', name: 'Courtyard', isCourtyard: true, isNamed: true, ...courtyardContent, isObjectiveRoom: false, rect: layout.courtyard })
 
   const namedRoomIds: string[] = []
   for (let i = 0; i < namedCount; i++) {
     const name = NAMED_SLOTS[i]
     const bias = NAMED_SLOT_BIAS[name]
-    const content = bias ? rollBiasedRoomContent(rng, bias, monsterTheme) : rollRoomContent(rng, monsterTheme)
+    const content = bias ? rollBiasedRoomContent(rng, bias, monsterTheme, dungeonLevel) : rollRoomContent(rng, monsterTheme, dungeonLevel)
     const id = `room-${slugify(name)}`
     rooms.push({ id, name, isCourtyard: false, isNamed: true, ...content, isObjectiveRoom: false, rect: layout.named[i] })
     connections.push(['courtyard', id])
@@ -102,7 +135,7 @@ export function generateKeepSite(rng: Rng = Math.random): KeepSite {
 
   for (let i = 0; i < genericCount; i++) {
     const parentId = namedRoomIds[genericParentIndices[i]]
-    const content = rollRoomContent(rng, monsterTheme)
+    const content = rollRoomContent(rng, monsterTheme, dungeonLevel)
     const id = `room-generic-${i}`
     rooms.push({ id, name: `Room ${i + 1}`, isCourtyard: false, isNamed: false, ...content, isObjectiveRoom: false, rect: layout.generic[i] })
     connections.push([parentId, id])
@@ -116,7 +149,7 @@ export function generateKeepSite(rng: Rng = Math.random): KeepSite {
   }
   rooms[objectiveIndex] = { ...rooms[objectiveIndex], isObjectiveRoom: true }
 
-  return { kind: 'keep', size, danger, rooms, connections }
+  return { kind: 'keep', size, danger, dungeonLevel, scenario, approach, rooms, connections }
 }
 
 // Optional basement — GM choice, not a roll. Ephemeral/re-rollable like generateTavern/

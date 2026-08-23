@@ -222,3 +222,48 @@ export function dungeonDangerForD6(roll: number): DangerLevel {
   if (roll <= 5) return 'Risky'
   return 'Deadly'
 }
+
+// Numeric Dungeon Level — a house-rule bridge (2026-08-23, B/X/OSRIC integration) letting
+// B/X's depth-scaled tables (Monster Sub-table Matrix, Treasure Amount multiplier) apply to
+// Shadowdark sites, which otherwise have no depth concept at all. Rather than adding a second
+// independent roll, the level is derived from the site's already-rolled Danger Level — the
+// project's existing "how dangerous is this place" knob — banded to loosely track B/X's own
+// matrix rows (1-16+). 'Safe' never actually occurs for a dungeon-shaped site
+// (dungeonDangerForD6 has no Safe outcome) but is included so the Record stays total against
+// the shared DangerLevel type.
+export type DungeonLevelBand = { min: number; max: number }
+
+const DUNGEON_LEVEL_BANDS: Record<DangerLevel, DungeonLevelBand> = {
+  Safe: { min: 1, max: 3 },
+  Unsafe: { min: 1, max: 4 },
+  Risky: { min: 5, max: 9 },
+  Deadly: { min: 10, max: 16 },
+}
+
+export function dungeonLevelBandForDanger(danger: DangerLevel): DungeonLevelBand {
+  return DUNGEON_LEVEL_BANDS[danger]
+}
+
+// Scenarios (d10) — transcribed verbatim from the B/X compilation's Appendix D: The Encounter
+// Builder (docs/bx-appendix-cde-source.txt, ~lines 1987-1997). A dungeon's "reason to exist" —
+// the dungeon-side equivalent of nothing this project had before (B/X/OSRIC integration,
+// round 2). Rolled once per dungeon-shaped site (Cave/Tomb/Deep tunnels/Ruins/Tower/Keep — the
+// same set that already carries dungeonLevel), shown as a flavor line, purely descriptive: it
+// doesn't feed any other roll or bias any table.
+const DUNGEON_SCENARIOS: string[] = [
+  'Exploring the Unknown',
+  'Investigating a Chaotic Outpost',
+  'Recovering Ruins',
+  'Destroying an Ancient Evil',
+  'Visiting a Lost Shrine',
+  'Fulfilling a Quest',
+  'Escaping from Enemies',
+  'Rescuing Prisoners',
+  'Using a Magic Portal',
+  'Finding a Lost Race',
+]
+
+export function dungeonScenarioForD10(roll: number): string {
+  if (roll < 1 || roll > 10) throw new Error(`dungeonScenarioForD10: roll out of range: ${roll}`)
+  return DUNGEON_SCENARIOS[roll - 1]
+}

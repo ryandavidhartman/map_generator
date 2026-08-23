@@ -13,6 +13,8 @@ import {
   shopNameForD20,
   shopKnownForForD20,
   interestingCustomerFor2D4,
+  governmentForD6,
+  populationRangeForSettlementType,
   type DistrictType,
 } from './settlementTables'
 
@@ -142,5 +144,34 @@ describe('Shop generator tables', () => {
   it('interesting customer is a 4x4 grid lookup', () => {
     expect(interestingCustomerFor2D4(1, 1)).toBe('Odd wizard')
     expect(interestingCustomerFor2D4(4, 4)).toBe('Pickpocket')
+  })
+})
+
+describe('Government table (d6)', () => {
+  it.each([
+    [1, 'Sheriff appointed by a noble or baron'],
+    [2, 'Sheriff appointed by a noble or baron'],
+    [3, 'Town council with a charter'],
+    [4, 'Town council with a charter'],
+    [5, 'A powerful merchant prince'],
+    [6, 'A high-level NPC adventurer'],
+  ] as const)('roll %i -> %s', (roll, authority) => {
+    expect(governmentForD6(roll).authority).toBe(authority)
+  })
+
+  it('throws out of range', () => {
+    expect(() => governmentForD6(0)).toThrow()
+    expect(() => governmentForD6(7)).toThrow()
+  })
+})
+
+describe('Population range by Settlement Type', () => {
+  it.each([
+    ['Village', { min: 50, max: 999 }],
+    ['Town', { min: 1000, max: 4999 }],
+    ['City', { min: 5000, max: 14999 }],
+    ['Metropolis', { min: 15000, max: 60000 }],
+  ] as const)('%s -> %o', (type, range) => {
+    expect(populationRangeForSettlementType(type)).toEqual(range)
   })
 })

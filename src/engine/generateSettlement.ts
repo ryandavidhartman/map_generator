@@ -1,13 +1,16 @@
-import { rollDie, type Rng } from './dice'
+import { rollDie, rollInRange, type Rng } from './dice'
 import {
   settlementTypeForD6,
   settlementTypeSpecFor,
   districtTypeForRoll,
   alignmentForD6,
   districtPoiForD6,
+  governmentForD6,
+  populationRangeForSettlementType,
   type SettlementType,
   type DistrictType,
   type Alignment,
+  type Government,
 } from '../data/settlementTables'
 import { rollSettlementNpc, type SettlementNpc } from '../data/npcTables'
 import {
@@ -20,6 +23,7 @@ import {
   type Point,
   type RoadEdge,
 } from './settlementLayout'
+import { rollCivicAmenities, type CivicAmenity } from './generateCivicAmenities'
 
 // Settlement NPC population (confirmed 2026-07-06): every district POI gets a named-flavor NPC
 // attached (race + profession, from Appendix C's Urban Encounters tables — see npcTables.ts),
@@ -43,6 +47,11 @@ export type District = {
 export type Settlement = {
   kind: 'settlement'
   settlementType: SettlementType
+  government: Government
+  population: number
+  // Settlement-level "civic amenities" (Appendix E, round 2 Phase 6) — additive to, and
+  // independent of, the per-district pointsOfInterest above (B/X has no district concept at all).
+  amenities: CivicAmenity[]
   districts: District[]
   mask: Point[]
   // District-id pairs for road rendering, mirroring DungeonSite.connections.
@@ -56,6 +65,10 @@ export type Settlement = {
 // University/Castle), and only Metropolis rolls d8 (the full range). Preserve this tiering.
 export function generateSettlement(rng: Rng = Math.random, overrideSettlementType?: SettlementType): Settlement {
   const spec = overrideSettlementType ? settlementTypeSpecFor(overrideSettlementType) : settlementTypeForD6(rollDie(6, rng))
+  const government = governmentForD6(rollDie(6, rng))
+  const popRange = populationRangeForSettlementType(spec.type)
+  const population = rollInRange(popRange.min, popRange.max, rng)
+  const amenities = rollCivicAmenities(spec.type, rng)
 
   const mask = buildCityMask(spec.diceCount, rng)
   const sites = sampleDistrictSites(spec.diceCount, mask, rng)
@@ -103,5 +116,5 @@ export function generateSettlement(rng: Rng = Math.random, overrideSettlementTyp
     districts[i] = { ...districts[i], buildings: generateBuildingFootprints(districts[i].polygon, mask, roadSegments, rng) }
   }
 
-  return { kind: 'settlement', settlementType: spec.type, districts, mask, roads }
+  return { kind: 'settlement', settlementType: spec.type, government, population, amenities, districts, mask, roads }
 }

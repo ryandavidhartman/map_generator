@@ -1,9 +1,11 @@
-import { rollDie, type Rng } from './dice'
-import { siteSizeForD6, siteTypeForD6, dungeonDangerForD6, type SiteType, type SiteSize, type RoomType } from '../data/dungeonTables'
+import { rollDie, rollInRange, type Rng } from './dice'
+import { siteSizeForD6, siteTypeForD6, dungeonDangerForD6, dungeonLevelBandForDanger, dungeonScenarioForD10, type SiteType, type SiteSize, type RoomType } from '../data/dungeonTables'
 import type { DangerLevel } from '../data/tables'
 import { generateDungeonLayout, type Rect } from './dungeonLayout'
 import { rollRoomContent, type GeneratedMonster, type GeneratedNpc } from './roomContent'
 import { rollMonsterTheme } from '../data/monsterTables'
+import type { RolledTreasure } from './generateTreasure'
+import type { RolledTrap } from './generateDressing'
 
 export type { GeneratedMonster, GeneratedNpc }
 
@@ -16,6 +18,8 @@ export type Room = {
   detail?: string
   monster?: GeneratedMonster
   npc?: GeneratedNpc
+  treasure?: RolledTreasure
+  trap?: RolledTrap
   isObjectiveRoom: boolean
 }
 
@@ -24,6 +28,8 @@ export type DungeonSite = {
   siteType: SiteType
   size: SiteSize
   danger: DangerLevel
+  dungeonLevel: number
+  scenario: string
   rooms: Room[]
   // Room-id pairs for corridor rendering; a room can connect to more than one neighbor
   // (real floor-plan adjacency), unlike the old single-parent tree model.
@@ -37,13 +43,16 @@ export function generateDungeonSite(rng: Rng = Math.random, overrideSiteType?: S
   const sizeSpec = siteSizeForD6(rollDie(6, rng))
   const siteType = overrideSiteType ?? siteTypeForD6(rollDie(6, rng))
   const danger = dungeonDangerForD6(rollDie(6, rng))
+  const levelBand = dungeonLevelBandForDanger(danger)
+  const dungeonLevel = rollInRange(levelBand.min, levelBand.max, rng)
+  const scenario = dungeonScenarioForD10(rollDie(10, rng))
   // Rolled once per site, not once per room, so every monster in this dungeon reads as one
   // coherent faction/theme instead of an independently-rolled grab bag (see monsterTables.ts).
   const monsterTheme = rollMonsterTheme(rng, siteType)
   const layout = generateDungeonLayout(sizeSpec.roomCount, rng)
 
   const rooms: Room[] = layout.rooms.map(({ rect, index }) => {
-    const content = rollRoomContent(rng, monsterTheme)
+    const content = rollRoomContent(rng, monsterTheme, dungeonLevel)
 
     return {
       id: `room-${index}`,
@@ -64,5 +73,5 @@ export function generateDungeonSite(rng: Rng = Math.random, overrideSiteType?: S
   }
   if (rooms.length > 0) rooms[objectiveIndex] = { ...rooms[objectiveIndex], isObjectiveRoom: true }
 
-  return { kind: 'dungeon', siteType, size: sizeSpec.size, danger, rooms, connections }
+  return { kind: 'dungeon', siteType, size: sizeSpec.size, danger, dungeonLevel, scenario, rooms, connections }
 }

@@ -83,6 +83,58 @@ export function districtPoiForD6(district: DistrictType, roll: number): string {
   return DISTRICT_POI[district][roll - 1]
 }
 
+// Government table (d6) — transcribed from the B/X compilation's Appendix E: Random
+// Settlement Builder (docs/bx-appendix-cde-source.txt, ~lines 3153-3166). Who actually runs
+// this settlement, layered on top of Shadowdark's existing district/POI/alignment system
+// (not a replacement for it) — see docs/plan-bx-osric-integration.md, Phase 3.
+export type Government = { authority: string; notes: string }
+
+const GOVERNMENTS: Government[] = [
+  {
+    authority: 'Sheriff appointed by a noble or baron',
+    notes: "Law is enforced on the noble's behalf; taxes and tolls fund the noble's own ends.",
+  },
+  {
+    authority: 'Town council with a charter',
+    notes: 'Decisions and disputes move slowly, through debate; bribery of individual council members is a live option.',
+  },
+  {
+    authority: 'A powerful merchant prince',
+    notes: 'The settlement is run like a business; trade is easy, but everything has a price, including favors.',
+  },
+  {
+    authority: 'A high-level NPC adventurer',
+    notes: 'Rules personally, backed by loyal retainers and whatever magic they returned from adventuring with.',
+  },
+]
+
+export function governmentForD6(roll: number): Government {
+  if (roll < 1 || roll > 6) throw new Error(`governmentForD6: roll out of range: ${roll}`)
+  if (roll <= 2) return GOVERNMENTS[0]
+  if (roll <= 4) return GOVERNMENTS[1]
+  if (roll === 5) return GOVERNMENTS[2]
+  return GOVERNMENTS[3]
+}
+
+// Population bands — transcribed from B/X's Settlement Size table (Appendix E), mapped onto
+// Shadowdark's own SettlementType (which already governs district count/roll, unchanged) since
+// this project has no separate "Settlement Size" concept of its own: Village->Village,
+// Town->Small Town, City->Large Town, Metropolis->Major City. B/X's own Major City band is
+// open-ended ("15,000+"); capped at 60,000 here so it's a concrete rollable range rather than
+// leaving Metropolis population unbounded.
+export type PopulationRange = { min: number; max: number }
+
+const POPULATION_RANGES: Record<SettlementType, PopulationRange> = {
+  Village: { min: 50, max: 999 },
+  Town: { min: 1000, max: 4999 },
+  City: { min: 5000, max: 14999 },
+  Metropolis: { min: 15000, max: 60000 },
+}
+
+export function populationRangeForSettlementType(type: SettlementType): PopulationRange {
+  return POPULATION_RANGES[type]
+}
+
 // Tavern Generator (d20) — two independent name-fragment columns + a "Known For" column.
 const TAVERN_NAME_A = [
   'The Crimson', 'The Dancing', 'The Dog &', 'The Rusty', "The Demon's", 'The Singing', 'The Boar &', 'The Silver',

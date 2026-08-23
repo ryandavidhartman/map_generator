@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { generateSettlement } from './generateSettlement'
+import { populationRangeForSettlementType } from '../data/settlementTables'
 
 // The real Voronoi-based layout (settlementLayout.ts) uses rejection sampling for district
 // site placement, which has a variable, non-scriptable rng call count — same shape as
@@ -99,6 +100,18 @@ describe('generateSettlement', () => {
 
       expect(settlement.mask.length).toBeGreaterThan(3)
       expect(settlement.mask[0]).toEqual(settlement.mask[settlement.mask.length - 1])
+
+      expect(settlement.government.authority).toBeTruthy()
+      expect(settlement.government.notes).toBeTruthy()
+      const popRange = populationRangeForSettlementType(settlement.settlementType)
+      expect(settlement.population).toBeGreaterThanOrEqual(popRange.min)
+      expect(settlement.population).toBeLessThanOrEqual(popRange.max)
+
+      expect(settlement.amenities.length).toBeGreaterThan(0)
+      for (const amenity of settlement.amenities) {
+        expect(amenity.type).toBeTruthy()
+        expect(amenity.staff).toBeDefined()
+      }
     }
   })
 })

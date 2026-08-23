@@ -26,6 +26,11 @@ describe('generateKeepSite', () => {
     const rng = scripted([
       forDieResult(1, 6), // size -> Small (range 3-4)
       forDieResult(1, 6), // danger
+      0, // dungeon level roll (rollInRange within the danger-derived band)
+      0, // scenario roll (d10) — value irrelevant to this test
+      0, // castle owner class d3 -> Fighter
+      0, // owner level roll (rollInRange within Fighter's 9-14 band) -> 9
+      0, // castle reaction d6 -> 1, Fighter's Pursue range (1-3)
       forDieResult(1, 2), // above-ground room count d2 -> range.min(3) + 1 - 1 = 3
       0, // monster theme roll (site-wide, once) — no monster rooms below, value irrelevant
       forDieResult(1, 10), // courtyard -> Empty
@@ -33,14 +38,20 @@ describe('generateKeepSite', () => {
       forDieResult(1, 10), // Barracks -> Empty
       forDieResult(3, 10), // Armory roll 1 -> Trap (not Treasure)
       forDieResult(1, 6), forDieResult(1, 6), // Trap needs 2 detail rolls
+      forDieResult(1, 100), // concrete trap name roll (consumed even though this roll is discarded by the bias)
       forDieResult(9, 10), // Armory biased reroll -> Treasure
-      forDieResult(1, 6), // Treasure detail roll
+      forDieResult(1, 6), // Treasure detail roll -> 'Hidden' (not 'Guarded by monster')
+      forDieResult(14, 20), // treasure amount roll -> gp row (1d4x100 gp)
+      forDieResult(1, 4), // gp dice roll
+      forDieResult(1, 20), // treasure container roll
+      forDieResult(2, 2), // container guard/hidden 50% check -> no guard
     ])
     const site = generateKeepSite(rng)
     const names = site.rooms.map((r) => r.name)
     expect(names).toEqual(['Courtyard', 'Hall', 'Barracks', 'Armory'])
     expect(names).not.toContain("Lord's Quarters")
     expect(site.rooms.find((r) => r.name === 'Armory')!.roomType).toBe('Treasure')
+    expect(site.rooms.find((r) => r.name === 'Armory')!.treasure).toBeDefined()
   })
 
   it('a Medium+ roll gets all 4 named slots plus generic overflow rooms attached round-robin', () => {
@@ -84,10 +95,16 @@ describe('generateKeepSite', () => {
       expect(objectiveRooms).toHaveLength(1)
       const maxRoll = Math.max(...site.rooms.map((r) => r.roomTypeRoll))
       expect(objectiveRooms[0].roomTypeRoll).toBe(maxRoll)
+      expect(site.scenario.length).toBeGreaterThan(0)
+      expect(['Fighter', 'Magic-User', 'Cleric']).toContain(site.approach.ownerClass)
+      expect(['Pursue', 'Ignore', 'Friendly']).toContain(site.approach.reaction)
+      expect(site.approach.patrol.length).toBeGreaterThan(0)
 
       for (const room of site.rooms) {
         expect(room.rect.x).toBeGreaterThanOrEqual(0)
         expect(room.rect.y).toBeGreaterThanOrEqual(0)
+        expect(Boolean(room.treasure)).toBe(room.roomType === 'Treasure')
+        expect(Boolean(room.trap)).toBe(room.roomType === 'Trap')
       }
     }
   })

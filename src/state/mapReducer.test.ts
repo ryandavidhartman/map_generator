@@ -180,4 +180,22 @@ describe('mapReducer', () => {
     expect(isRevealableNow(state, '2,0')).toBe(false) // not adjacent
     expect(isRevealableNow(state, '0,0')).toBe(false) // already revealed
   })
+
+  it('SET_PARTY_LEVEL updates partyLevel, clamped to a minimum of 1', () => {
+    expect(EMPTY_MAP_STATE.partyLevel).toBe(1)
+    let state = mapReducer(EMPTY_MAP_STATE, { type: 'SET_PARTY_LEVEL', level: 5 })
+    expect(state.partyLevel).toBe(5)
+    state = mapReducer(state, { type: 'SET_PARTY_LEVEL', level: 0 })
+    expect(state.partyLevel).toBe(1)
+    state = mapReducer(state, { type: 'SET_PARTY_LEVEL', level: -3 })
+    expect(state.partyLevel).toBe(1)
+    state = mapReducer(state, { type: 'SET_PARTY_LEVEL', level: 7.8 })
+    expect(state.partyLevel).toBe(7)
+  })
+
+  it('START_MAP always resets partyLevel to 1', () => {
+    const bumped = mapReducer(EMPTY_MAP_STATE, { type: 'SET_PARTY_LEVEL', level: 9 })
+    const state = mapReducer(bumped, { type: 'START_MAP', terrain: 'Grassland', rng: fixedRng(0.99) })
+    expect(state.partyLevel).toBe(1)
+  })
 })

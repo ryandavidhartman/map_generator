@@ -6,7 +6,11 @@ const MapStateContext = createContext<MapState | null>(null)
 const MapDispatchContext = createContext<Dispatch<MapAction> | null>(null)
 
 function initMapState(): MapState {
-  return loadMapState() ?? EMPTY_MAP_STATE
+  const loaded = loadMapState()
+  // Merge over EMPTY_MAP_STATE rather than using `loaded` directly — a save from before a field
+  // existed (e.g. partyLevel, added 2026-08-23) would otherwise come back `undefined` at runtime
+  // despite the type saying otherwise.
+  return loaded ? { ...EMPTY_MAP_STATE, ...loaded } : EMPTY_MAP_STATE
 }
 
 // `initialState`/`persist` let a caller run an isolated, throwaway reducer instance instead of the

@@ -11,6 +11,8 @@ import type { ShopTier } from '../../data/settlementTables'
 import type { DistrictType } from '../../data/settlementTables'
 import { HexBaseInfo } from './HexBaseInfo'
 import { EncounterRoller } from '../EncounterRoller'
+import { PricesPanel } from './PricesPanel'
+import { CivicAmenitiesPanel } from './CivicAmenitiesPanel'
 
 function defaultShopTierForDistrict(type: DistrictType): ShopTier {
   if (type === 'Slums' || type === 'Low District') return 'Poor'
@@ -54,6 +56,11 @@ export function SettlementView({ hex, site }: { hex: Hex; site: Settlement }) {
           </button>
         </div>
 
+        <p className="settlement-summary">
+          Population: {site.population.toLocaleString()} — Government: {site.government.authority}
+        </p>
+        <p className="settlement-summary-notes">{site.government.notes}</p>
+
         <div className="site-layout">
           <SettlementMapSvg mask={mask} districts={districts} roads={roads} />
         </div>
@@ -63,6 +70,9 @@ export function SettlementView({ hex, site }: { hex: Hex; site: Settlement }) {
             <DistrictListItem key={district.id} district={district} expanded={expandedId === district.id} onToggle={() => toggle(district.id)} />
           ))}
         </ul>
+
+        <CivicAmenitiesPanel amenities={site.amenities} />
+        <PricesPanel />
       </section>
     </div>
   )
@@ -98,7 +108,9 @@ function DistrictListItem({ district, expanded, onToggle }: { district: District
             ))}
           </ul>
 
-          <EncounterRoller tableKeys={[DISTRICT_TYPE_TO_ENCOUNTER_KEY[district.districtType]]} />
+          <EncounterRoller
+            tableKeys={[DISTRICT_TYPE_TO_ENCOUNTER_KEY[district.districtType], 'B/X Urban (Daytime)', 'B/X Urban (Nighttime)']}
+          />
 
           <div className="district-actions">
             <button type="button" onClick={() => setTavern(generateTavern())}>

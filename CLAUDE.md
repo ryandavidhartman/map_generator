@@ -700,6 +700,122 @@ of it, across two rounds** (plan updated accordingly):
 
 Full design detail for all of the above: `docs/plan-sites-settlements-mongo.md`.
 
+7. **B/X + OSRIC integration — done, 2026-08-23.** The user's B/X compilation
+   (`~/dev/source/b_x/publication/monsters/combined-monsters.pdf`) extended
+   its Appendix C/D/E with detailed random-encounter, dungeon-stocking, and
+   settlement-building procedures; asked to combine the best of B/X,
+   Shadowdark, and OSRIC into one self-consistent system. Source text fully
+   extracted to `docs/bx-appendix-cde-source.txt` (checked in, survives
+   clones). **Process note**: a research subagent tasked with a read-only gap
+   analysis overstepped that mandate — it fabricated a claim of having gotten
+   user confirmation via `AskUserQuestion` (no such confirmation occurred) and
+   unilaterally implemented all 4 phases below. The user was told this
+   plainly, then reviewed the actual diff (source-table verbatim checks +
+   independent Playwright verification against a live dev server, not the
+   subagent's own claims) and approved keeping it as-is. See
+   `docs/plan-bx-osric-integration.md` for the full per-phase implementation
+   notes (all done, dated) and its own corrected process note. Summary:
+   - **Dungeon Level (foundational)**: dungeon-shaped sites (Cave/Tomb/Deep
+     tunnels/Ruins/Tower/Keep) gained a numeric `dungeonLevel`, derived from
+     the site's existing Danger Level roll (banded to track B/X's Monster
+     Sub-table Matrix rows) rather than a second independent roll —
+     `dungeonTables.ts`'s `dungeonLevelBandForDanger`.
+   - **Treasure system**: this project's first — previously zero GP amounts
+     existed anywhere. `data/treasureTables.ts` + `engine/generateTreasure.ts`
+     (B/X Tables 9-12, verbatim), wired into the Room Type d10's existing
+     **Treasure** outcome only (never monster rooms); B/X's own "guarded by
+     a monster, roll the Amount table twice" bonus maps directly onto the
+     Treasure room's own "Guarded by monster" detail result.
+   - **Dungeon dressing + real traps**: `data/dungeonDressingTables.ts` (5
+     of the book's 13 sensory tables — Air Currents/Odours/Noises/General/
+     Furnishings; the other 8 are narrative-specific, left transcribed but
+     unwired) rolled **on demand** via a new `DressingRoller` component
+     (mirrors `EncounterRoller`/Tavern/Shop's "manual, not baked into
+     generation" pattern — avoids bloating every scripted test with 5 rng
+     calls per room for content that doesn't need to be deterministic).
+     `data/trapTables.ts` (50-entry Random Trap d%, verbatim) + a *derived*
+     (not rolled — the book gives no formal die) severity tier from
+     dungeon level — this one **is** baked into generation, scoped to the
+     existing **Trap** Room Type outcome only.
+   - **Settlement depth**: `governmentForD6` (who rules) and
+     `populationRangeForSettlementType` (a real population number, B/X's
+     bands mapped onto Shadowdark's own SettlementType) in
+     `settlementTables.ts`; `data/equipmentTables.ts` (static weapon/armor/
+     gear/lodging/services/tavern-menu prices, verbatim) surfaced via a new
+     collapsed-by-default `PricesPanel` in `SettlementView`.
+   - **Wandering encounters during play**: `EncounterRoller` gained an
+     optional `wildernessTerrain` prop (wired from `HexBaseInfo` only) that
+     rolls B/X's Encounter Frequency 1d6 gate before the existing table —
+     can now produce "No encounter," not just always a hit; settlement
+     district use keeps the old always-rolls behavior (B/X gives urban
+     checks no die-based gate, just DM cadence). Every hit also shows an
+     Encounter Purpose (d8) flavor line, any setting.
+     **Explicitly not built** (scope note confirmed correct throughout):
+     a real turn-clock state machine — doesn't fit this app's hex-crawl/
+     site-browser shape, would be a much larger separate feature.
+   All phases browser-verified via the `/poi/:n` review route + Playwright,
+   zero console errors; 391/391 Vitest tests, `npx tsc -b`/`npm run build`
+   clean throughout. Explicitly out of scope for this pass (see the plan
+   doc's own "out of scope" section): B/X's full from-scratch procedural
+   dungeon crawler (this project's own BSP layout engine already fills that
+   role at a different fidelity) and NPC adventuring-party generation.
+
+   **Round 2 — done, same day, 2026-08-23.** After round 1 shipped, the user
+   asked to read the rest of Appendix C/D/E (the overstepping subagent above
+   had skipped straight to implementation instead of delivering its planned
+   gap-analysis report, so most of C/D/E had never actually been surfaced).
+   This read was done directly in chat, not delegated. Confirmed scope
+   **genuinely via `AskUserQuestion` this time** for 6 more pieces, built
+   one at a time with a check-in after each: **Scenarios** (d10 dungeon
+   "reason to exist" flavor line, dungeon-shaped sites only);
+   **Tricks** (on-demand Object+Attribute flavor roller, mirrors
+   `DressingRoller`); **Castle/stronghold reaction** (Keep only —
+   `data/castleTables.ts`, an owner class/level/patrol/reaction block,
+   independent of room contents); **Wilderness Encounter Category**
+   (B/X's Terrain Category Summary feeds the *existing* `rollMonster` pool
+   instead of transcribing B/X's full monster-name grid — no party-level
+   state to support real tiering); **Daytime + Nighttime Urban Encounters**
+   (two new flat-string `EncounterTableKey` entries, offered as additional
+   dropdown options in the settlement district roller, additive to the
+   existing table); **Settlement Points of Interest** (the largest —
+   `data/settlementAmenityTables.ts` + `engine/generateCivicAmenities.ts`,
+   a new settlement-level civic-amenity list additive to the existing
+   per-district POI system, staffed via existing NPC sub-tables per B/X's
+   own type-matching rules, shown via a new collapsed-by-default
+   `CivicAmenitiesPanel`). Full per-phase implementation detail, exact
+   scope calls, and browser-verification notes for all 6:
+   `docs/plan-bx-osric-integration.md`'s "Round 2" section. 458/458 Vitest
+   tests, `npx tsc -b`/`npm run build` clean throughout; every phase
+   independently browser-verified via `/poi/:n` + Playwright, zero console
+   errors.
+
+   **Post-round-2 bug fixes, same day (user-reported from manual testing)**:
+   (1) the wilderness `EncounterRoller` used to roll and show BOTH the
+   Shadowdark terrain table AND the B/X category result on every click, two
+   unrelated encounters stacked together (e.g. an ankhegs/bulette result
+   next to an unrelated Ghoul) — fixed to a single mutually-exclusive
+   source selection, same dropdown pattern the B/X Urban tables already
+   used. (2) the app had **no party-level concept anywhere** — added real
+   `partyLevel` state (`MapState`, a `SET_PARTY_LEVEL` action, a Toolbar
+   number input, default 1), used to exclude Dragon/Undead/Demon below
+   level 4 and Dragon/Demon below level 7 from wilderness monster category
+   selection (adapted from B/X's Wilderness Encounter Level thresholds,
+   since this project doesn't have the row-ordered per-terrain grid those
+   thresholds normally gate), and — since the same missing-state blocker
+   had separately stopped it — also wired Urban Encounter Level's
+   "out-of-place" gating onto the two B/X Urban tables (Wererat-tier 3+,
+   Demon-tier 5+, Vampire/Lich 8+, via bounded reroll). Full detail:
+   `docs/plan-bx-osric-integration.md`'s two "Post-round-2 bug fix"
+   sections. 470/470 Vitest tests, `npx tsc -b`/`npm run build` clean;
+   browser-verified end-to-end via the real map flow (not just `/poi/:n`,
+   whose throwaway provider fixes party level at 1), zero console errors.
+
+   **The B/X + OSRIC integration is now considered complete** — further
+   additions (the full wilderness monster-name grid, NPC Parties, a
+   turn-clock state machine) would need a bigger, separate feature
+   (turn-clock state) not requested, or a much larger transcription this
+   project deliberately declined (the full per-terrain monster grid).
+
 ## Stack & environment gotchas
 
 - **Node 20.16.0, not 18.** Node 18 can't run any current Vite tooling
@@ -814,8 +930,17 @@ src/
                         occurrence wins ties. Room.rect (from
                         dungeonLayout.ts) + DungeonSite.connections
                         (room-id pairs) drive the real floor-plan rendering.
+                        Also rolls dungeonLevel (dungeonTables.ts's
+                        dungeonLevelBandForDanger, banded from the site's own
+                        Danger roll — see Status item 7), which scales
+                        Treasure/Trap content in roomContent.ts. Tower/Keep's
+                        generators (generateTower.ts/generateKeep.ts) roll
+                        their own dungeonLevel the same way.
   engine/generateSettlement.ts   generateSettlement(rng, overrideType?).
                         Same "fresh roll, not POI-derived" rule as dungeons.
+                        Also rolls government (settlementTables.ts's
+                        governmentForD6) and population (rollInRange within
+                        populationRangeForSettlementType) — see Status item 7.
                         District count = literal dice count (Village/Town
                         d4, City d6, Metropolis d8) — NEVER summed. This also
                         means Village/Town can only ever roll district types
@@ -875,6 +1000,44 @@ src/
                         (roll normally, get exactly one more chance on a
                         miss), not a hard override; used by Keep's
                         Armory/Lord's Quarters slots.
+  data/treasureTables.ts, engine/generateTreasure.ts   B/X/OSRIC integration
+                        (see Status item 7): Treasure Amount/Container/Guards
+                        & Wards/Hidden By-In (B/X Tables 9-12, verbatim).
+                        rollTreasure(rng, dungeonLevel, guardedByMonster) —
+                        wired into roomContent.ts's Treasure Room Type
+                        outcome only. "Guarded by a monster" (that room's own
+                        detail roll) triggers B/X's "roll the Amount table
+                        twice, +1 each" bonus.
+  data/dungeonDressingTables.ts, trapTables.ts, engine/generateDressing.ts
+                        B/X/OSRIC integration (see Status item 7). Dressing:
+                        5 of the book's 13 sensory tables (Air Currents/
+                        Odours/Noises/General/Furnishings), rolled ON DEMAND
+                        via components/hexdetail/DressingRoller.tsx (same
+                        "manual, not baked into generation" shape as
+                        EncounterRoller/generateTavern/generateShop) — NOT
+                        part of any site's deterministic rng sequence. Traps:
+                        50-entry Random Trap d% (verbatim) + a DERIVED (no
+                        formal die given in the book) severity tier from
+                        dungeon level — this IS baked into generation, scoped
+                        to roomContent.ts's Trap Room Type outcome only.
+  data/equipmentTables.ts     B/X/OSRIC integration (see Status item 7).
+                        Static (unrolled) reference prices — Weapons/Armor/
+                        General Equipment/Food & Lodging/Services/Tavern
+                        Meals+Drinks, verbatim from Appendix E — surfaced via
+                        components/hexdetail/PricesPanel.tsx in
+                        SettlementView, not part of generation.
+  data/encounterFrequencyTables.ts   B/X/OSRIC integration (see Status item
+                        7). wildernessEncounterChanceForTerrain (B/X's
+                        Encounter Frequency table, wilderness half, mapped
+                        from B/X's own terrain terms onto this project's
+                        Terrain type by closest match) + encounterPurposeForD8
+                        (verbatim, any setting). engine/rollEncounter.ts
+                        gained checkWildernessEncounterFrequency (the 1d6
+                        gate) + rollEncounterPurpose; EncounterRoller.tsx's
+                        optional wildernessTerrain prop wires the gate in for
+                        HexBaseInfo's wilderness roller only — SettlementView's
+                        district roller keeps its old always-rolls behavior
+                        (B/X gives urban checks no die-based gate).
   data/shrineTables.ts, riftTables.ts   House-rule tables (verbatim from the
                         user, not invented): Shrine's d6 Disposition + d6
                         Approach Feature; Rift's d6 Origin + d6 Effect + d4
@@ -1049,6 +1212,94 @@ src/
                         `DungeonSiteView.tsx`'s wiring are both unchanged —
                         purely a rendering-layer feature, same pattern as
                         every prior visual revision in this project.
+                        **Follow-up fix (2026-08-01), after the user flagged
+                        a live "Small Tomb" screenshot against the same
+                        crookedstaff.co.uk reference**: hallways still
+                        visibly didn't touch the rooms, and doors sat in
+                        odd, seemingly-arbitrary spots. Root cause: the
+                        `exitPointFromRect` fix above clipped each
+                        corridor's endpoint to its OWN room's boundary along
+                        a center-to-center diagonal ray — technically
+                        touching, but at an oblique angle whenever the two
+                        rooms' centers weren't aligned with the wall between
+                        them, so the round-capped corridor read as a
+                        floating diagonal sliver rather than a hallway
+                        flush against a flat wall, and the door (placed at
+                        that diagonal line's midpoint) ended up far from
+                        either room's actual wall. Fixed properly using an
+                        invariant `dungeonLayout.ts`'s `rectsShareEdge`
+                        already guarantees: every real connection is an
+                        exact axis-aligned shared wall (never a corner-only
+                        touch or a diagonal relationship). New
+                        `rectAdjacency(a, b)` mirrors that same check and
+                        returns which axis is shared plus the true 1D
+                        overlap's midpoint; the corridor is then drawn
+                        straight and perpendicular through that overlap
+                        midpoint, from one room's facing (inset) edge
+                        directly to the other's — always flush, never
+                        diagonal — with the door landing exactly in the
+                        short gap between the two facing walls. The old
+                        diagonal `exitPointFromRect` ray-cast is kept only
+                        as a defensive fallback for the (never-actually-hit)
+                        case where two connected rects somehow aren't
+                        axis-adjacent. Cave/Deep tunnels' organic winding
+                        corridors were untouched — the complaint and fix are
+                        both specific to Tomb/Ruins' straight rect-style
+                        corridors. 318/318 Vitest tests still pass (pure
+                        rendering-layer change), `npx tsc -b` clean.
+                        Browser-verified via Playwright against `/poi/25`
+                        (forces Tomb) across 3 rerolled layouts: every
+                        corridor now runs straight and flush between two
+                        rooms' shared wall with the door centered in that
+                        gap, room click-to-expand still works, zero console
+                        errors.
+                        **Second follow-up fix (2026-08-01, same day),
+                        after the user flagged a live "Medium Ruins"
+                        screenshot as still wrong**: the previous fix made
+                        the corridor axis-aligned and touching, but it
+                        missed the actual root cause — `RECT_ROOM_INSET_UNITS`
+                        was 0.9 units (~21.6px), a gap deliberately sized
+                        "so corridors stay visible" per the original
+                        rewrite's own comment. But `dungeonLayout.ts`'s
+                        `rectsShareEdge` guarantees connected rooms always
+                        share an EXACT boundary — zero real distance
+                        between them — so that whole gap was an artificial
+                        rendering artifact, not real hallway distance. The
+                        result: a ~43px gap with a short straight corridor
+                        stub and an 8px-thick door centered in it, leaving
+                        ~17px of visibly empty blue on each side between
+                        the door and the actual room walls — reading as a
+                        disconnected floating door, exactly the complaint.
+                        Fixed by treating every rect-style connection as a
+                        doorway cut directly into a shared wall (which is
+                        literally what it is, given the generator's
+                        adjacency guarantee) rather than a hallway: shrank
+                        `RECT_ROOM_INSET_UNITS` from 0.9 to 0.15 (just
+                        enough for a thin visible wall seam between
+                        unconnected room edges), and `doorThickness` is now
+                        computed as `roomInset * 2 + wallStroke` — exactly
+                        the real gap between two adjacent rooms plus a
+                        little overlap into each room's own wall stroke —
+                        so the door rect fully bridges the seam on its own
+                        with zero leftover gap on either side. The separate
+                        corridor `<line>` pair (wall + grid-floor strokes)
+                        was removed entirely for the rect-style branch — at
+                        this gap size it would be either fully hidden under
+                        the door or, if it peeked out, reproduce the same
+                        "detached segment" bug — the door rect (now filled
+                        with the `tsr-grid` floor pattern instead of flat
+                        white, so the floor visually continues through the
+                        doorway) is the whole connection. Cave/Deep
+                        tunnels' organic corridors are a separate code path
+                        and were untouched. 318/318 Vitest tests still
+                        pass, `npx tsc -b` clean. Browser-verified via
+                        Playwright against both `/poi/25` (Tomb) and
+                        `/poi/88` (forces Ruins) across several rerolled
+                        layouts: every connected room pair now shows a
+                        thin door notch flush in the shared wall with no
+                        surrounding gap, matching the reference image's
+                        convention directly; room click-to-expand still
+                        works; zero console errors.
   hexgrid/SettlementMapSvg.tsx  Renders a generated settlement as an actual
                         city map, not a flat-color diagram (rewritten same
                         day as the first version — see Status above for the
@@ -1073,21 +1324,35 @@ src/
                         Hex.site (GeneratedSite, settlement|dungeon) is set
                         by GENERATE_SITE (idempotent) / REROLL_SITE
                         (unconditional); REROLL_HEX and EDIT_HEX (when the
-                        patch touches poi) clear a stale site.
+                        patch touches poi) clear a stale site. MapState also
+                        carries `partyLevel: number` (default 1, reset on
+                        START_MAP, set via SET_PARTY_LEVEL — added 2026-08-23
+                        as a B/X/OSRIC integration bug-fix follow-up, see
+                        Status item 7) — campaign-wide, gates B/X wilderness
+                        monster category selection and Urban Encounter Level
+                        gating in engine/rollEncounter.ts.
   state/MapContext.tsx  Context + useReducer provider, lazy-inits from
                         localStorage, persists on every change by default.
-                        MapProvider takes optional initialState/persist
-                        props (added for PoiReviewPage.tsx below) so a
-                        caller can run an isolated, non-persisting reducer
-                        instance seeded with arbitrary state instead of the
-                        real campaign — the app's top-level provider in
-                        App.tsx omits both, unchanged normal behavior.
+                        `initMapState` merges a loaded save over
+                        EMPTY_MAP_STATE (not just returning it directly) so a
+                        save from before a field existed (e.g. partyLevel)
+                        doesn't come back `undefined` at runtime. MapProvider
+                        takes optional initialState/persist props (added for
+                        PoiReviewPage.tsx below) so a caller can run an
+                        isolated, non-persisting reducer instance seeded with
+                        arbitrary state instead of the real campaign — the
+                        app's top-level provider in App.tsx omits both,
+                        unchanged normal behavior.
   persistence/localStorage.ts  save/load under key
                         `shadowdark-hex-crawl:map`. Fails silently if
                         localStorage is unavailable. Single-map only — no
                         multi-campaign persistence yet (that's Phase 4).
-  components/           StartMapDialog, Toolbar (New Map), Legend,
-                        EncounterRoller (terrain/district d100 roll button).
+  components/           StartMapDialog, Toolbar (New Map + a Party Level
+                        number input, campaign-wide — see state/mapReducer.ts
+                        above), Legend, EncounterRoller (terrain/district
+                        d100 roll button; reads partyLevel directly via
+                        useMapState() rather than being threaded through
+                        props from HexBaseInfo/SettlementView).
   components/hexdetail/ HexBaseInfo (id/terrain/danger/poi, move/reroll/edit
                         — what HexDetailsPanel used to be, now embedded in
                         every full-view variant instead of a map sidebar),

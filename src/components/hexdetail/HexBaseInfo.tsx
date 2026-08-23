@@ -73,7 +73,7 @@ export function HexBaseInfo({ hex }: { hex: Hex }) {
         </button>
       </div>
 
-      <EncounterRoller tableKeys={TERRAIN_TO_ENCOUNTER_KEYS[hex.terrain]} />
+      <EncounterRoller tableKeys={TERRAIN_TO_ENCOUNTER_KEYS[hex.terrain]} wildernessTerrain={hex.terrain} />
     </div>
   )
 }

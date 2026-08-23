@@ -1,6 +1,13 @@
-// Transcribed from Shadowdark RPG, "Random Encounters" appendix (book pp. 142-185).
-// Each table is expressed as the book's own range notation (e.g. "02-03") and expanded to a
-// full 100-entry array at module load; a book "00" entry means roll 100.
+// Transcribed from Shadowdark RPG, "Random Encounters" appendix (book pp. 142-185), plus (round
+// 2, Phase 5 of the B/X/OSRIC integration — see docs/plan-bx-osric-integration.md) two B/X
+// Appendix C tables, 'B/X Urban (Daytime)' and 'B/X Urban (Nighttime)' (docs/bx-appendix-cde-
+// source.txt, ~lines 661-822). Each table is expressed as the book's own range notation (e.g.
+// "02-03") and expanded to a full 100-entry array at module load; a book "00" entry means roll
+// 100. The two B/X tables condense each row's "Encounter" + "# Encountered & Notes" columns into
+// one display string — same flat-string-per-row shape as every Shadowdark table here, no new
+// mechanism. Rows that point at Appendix C's excluded Red-Light Professions sub-table (see
+// npcTables.ts's own exclusion of that sub-table, same tonal-mismatch reasoning) get neutral
+// substitute text instead of an explicit profession list.
 
 import type { Terrain } from './tables'
 import type { SiteType } from './dungeonTables'
@@ -9,6 +16,8 @@ import type { DistrictType } from './settlementTables'
 export type EncounterTableKey =
   | 'Arctic'
   | 'Artisan District'
+  | 'B/X Urban (Daytime)'
+  | 'B/X Urban (Nighttime)'
   | 'Castle District'
   | 'Cave'
   | 'Deep Tunnels'
@@ -1152,9 +1161,104 @@ const UNIVERSITY_DISTRICT: RangeEntry[] = [
   { min: 100, max: 100, text: 'An archmage entrusts a random magic item to the PCs' },
 ]
 
+// Urban Encounter Level (Appendix C, ~lines 832-842): a handful of rows on the two B/X Urban
+// tables are "out of place" below a party-level threshold — extends RangeEntry with an optional
+// minPartyLevel rather than adding a parallel table, so the row data and its gate stay together.
+// See engine/rollEncounter.ts's rollBxUrbanEncounter for how this is actually enforced (a bounded
+// reroll, added as a follow-up fix once partyLevel state existed to check it against).
+export type BxUrbanEncounterTableKey = 'B/X Urban (Daytime)' | 'B/X Urban (Nighttime)'
+type GatedRangeEntry = RangeEntry & { minPartyLevel?: number }
+
+const BX_URBAN_DAYTIME: GatedRangeEntry[] = [
+  { min: 1, max: 1, text: 'Thief (as Assassin) — 1d3, check the Race sub-table' },
+  { min: 2, max: 2, text: 'Bandit — 3d4 and a leader' },
+  { min: 3, max: 12, text: 'Beggar — 1d2' },
+  { min: 13, max: 13, text: 'Brigand — 3d4 and a leader' },
+  { min: 14, max: 18, text: 'Guardsmen — 2d8 and a leader' },
+  { min: 19, max: 21, text: 'Official — a minor official, or rarely a major official with 2d4 guardsmen' },
+  { min: 22, max: 23, text: 'Watchman — 5 men-at-arms (0-level), a sergeant (level 1d3), and a cleric (level 1d4+1)' },
+  { min: 24, max: 25, text: 'Cleric — a level 1d6+5 cleric with 1d6-1 assistant clerics (level 1d4)' },
+  { min: 26, max: 26, text: 'Cleric (as Druid) — a level 1d6+5 cleric with lesser clerics or fighters in escort' },
+  { min: 27, max: 27, text: 'Drunk — see the Urban Professions sub-table for the exact profession' },
+  { min: 28, max: 29, text: 'Fighter — a level 2d4+4 fighter with 1d4-1 henchmen (level 1d4)' },
+  { min: 30, max: 33, text: 'Gentleman — a foppish dandy and sycophants, a gentlewoman, or a leveled nobleman fighter and friends' },
+  { min: 34, max: 34, text: 'Giant Rats — 2d4' },
+  { min: 35, max: 39, text: 'Townsperson — 0-level Normal Human' },
+  { min: 40, max: 41, text: 'A local going about undisclosed business (DM’s discretion)' },
+  { min: 42, max: 42, text: 'Magic-User (as Illusionist) — a level 1d4+6 magic-user with apprentices or fighter bodyguards' },
+  { min: 43, max: 50, text: 'Labourer or Peddler — rough 0-level workmen, or peddlers selling simple goods' },
+  { min: 51, max: 51, text: 'Magic-User — a level 1d6+6 magic-user with apprentices and/or fighter bodyguards' },
+  { min: 52, max: 55, text: 'Mercenary — 3d4 fighters (level 1d6-1)' },
+  { min: 56, max: 62, text: 'Merchant — 1d3 merchants (0-level Normal Humans)' },
+  { min: 63, max: 63, text: 'Troubadour — 1d4 travelling bards, musicians, or actors' },
+  { min: 64, max: 65, text: 'Night Hag — DM’s discretion, only 1 encountered', minPartyLevel: 5 },
+  { min: 66, max: 66, text: 'Noble — a nobleman with fighter bodyguards, or a noblewoman' },
+  { min: 67, max: 69, text: 'Fighter (as Paladin) — a level 1d4+5 fighter' },
+  { min: 70, max: 70, text: 'Pilgrim — 3d4 pilgrims (Normal Humans)' },
+  { min: 71, max: 72, text: 'Press Gang — 2d8 1st-level fighters and a leader (level 1d4+1), wielding clubs' },
+  { min: 73, max: 73, text: 'Thugs — 1d4+1 fighters (level 1d6+4)' },
+  { min: 74, max: 78, text: 'Rakshasa — DM’s discretion, 1d3 encountered', minPartyLevel: 5 },
+  { min: 79, max: 82, text: 'Thief — a level 1d4+7 thief with 1d3-1 apprentice thieves (level 1d4)' },
+  { min: 83, max: 97, text: 'Tradesman — 2d4 artisans, craftsmen, or skilled workmen (Normal Humans)' },
+  { min: 98, max: 98, text: 'Wererat — 2d4 encountered, mostly in human form, rarely giant rat form', minPartyLevel: 3 },
+  { min: 99, max: 99, text: 'Weretiger — 1d2 encountered, in human form', minPartyLevel: 3 },
+  { min: 100, max: 100, text: 'Werewolf — 2d4 encountered, in human form', minPartyLevel: 3 },
+]
+
+const BX_URBAN_NIGHTTIME: GatedRangeEntry[] = [
+  { min: 1, max: 3, text: 'Thief (as Assassin) — 1d3, check the Race sub-table' },
+  { min: 4, max: 5, text: 'Bandit — 3d4 and a leader' },
+  { min: 6, max: 8, text: 'Beggar — 1d2' },
+  { min: 9, max: 10, text: 'Brigand — 3d4 and a leader' },
+  { min: 11, max: 11, text: 'Guardsman — 2d8 and a leader' },
+  { min: 12, max: 12, text: 'Official — a minor official, or rarely a major official with 2d4 guardsmen' },
+  { min: 13, max: 21, text: 'Watchman — 5 men-at-arms (0-level), a sergeant (level 1d3), and a cleric (level 1d4+1)' },
+  { min: 22, max: 22, text: 'Cleric — a level 1d6+5 cleric with 1d6-1 assistant clerics (level 1d4)' },
+  { min: 23, max: 23, text: 'Demon — DM’s discretion (any demon in this book), only 1 encountered', minPartyLevel: 5 },
+  { min: 24, max: 24, text: 'Devil — DM’s discretion (any devil in this book), only 1 encountered', minPartyLevel: 5 },
+  { min: 25, max: 25, text: 'Doppelganger — 1d4+2, disguised as a profession from the Urban Professions sub-table' },
+  { min: 26, max: 26, text: 'Cleric (as Druid) — a level 1d6+5 cleric with lesser clerics or fighters in escort' },
+  { min: 27, max: 31, text: 'Drunk — see the Urban Professions sub-table for the exact profession' },
+  { min: 32, max: 33, text: 'Fighter — a level 2d4+4 fighter with 1d4-1 henchmen (level 1d4)' },
+  { min: 34, max: 35, text: 'Gentleman — a foppish dandy and sycophants, a gentlewoman, or a leveled nobleman fighter and friends' },
+  { min: 36, max: 36, text: 'Ghast or Ghoul — 2d4 ghasts, or 4d4 ghouls' },
+  { min: 37, max: 37, text: 'Ghost — 1 encountered', minPartyLevel: 5 },
+  { min: 38, max: 42, text: 'Giant Rats — 4d6' },
+  { min: 43, max: 43, text: 'Townsperson — 0-level Normal Human' },
+  { min: 44, max: 50, text: 'A local out for the night, occupation unclear (DM’s discretion)' },
+  { min: 51, max: 51, text: 'Magic-User (as Illusionist) — a level 1d4+6 magic-user with apprentices or fighter bodyguards' },
+  { min: 52, max: 52, text: 'Labourer or Peddler — rough 0-level workmen, or peddlers selling simple goods' },
+  { min: 53, max: 53, text: 'Magic-User — a level 1d6+6 magic-user with apprentices and/or fighter bodyguards' },
+  { min: 54, max: 58, text: 'Mercenary — 3d4 fighters (level 1d6-1)' },
+  { min: 59, max: 60, text: 'Merchant — 1d3 merchants, 2d4 0-level mercenary guards, and a mercenary leader (level 1d4)' },
+  { min: 61, max: 61, text: 'Troubadour — 1d4 travelling bards, musicians, or actors' },
+  { min: 62, max: 62, text: 'Night Hag — DM’s discretion, only 1 encountered', minPartyLevel: 5 },
+  { min: 63, max: 64, text: 'Noble — a nobleman with fighter bodyguards, or a noblewoman' },
+  { min: 65, max: 65, text: 'Fighter (as Paladin) — a level 1d4+5 fighter' },
+  { min: 66, max: 66, text: 'Pilgrim — 3d4 pilgrims (Normal Humans)' },
+  { min: 67, max: 67, text: 'Press Gang — 2d8 1st-level fighters and a leader (level 1d4+1), wielding clubs' },
+  { min: 68, max: 71, text: 'Thugs — 1d4+1 fighters (level 1d6+4)' },
+  { min: 72, max: 72, text: 'Rakshasa — DM’s discretion, 1d3 encountered', minPartyLevel: 5 },
+  { min: 73, max: 73, text: 'Fighter (as Ranger) — a level 1d4+6 fighter' },
+  { min: 74, max: 80, text: 'Muggers or Humanoids — 1d6+6 2nd-level fighters with clubs, or a band of humanoids (Orcs, Kobolds, Goblins, etc.)' },
+  { min: 81, max: 81, text: 'Shadow — DM’s discretion, 2d4 encountered', minPartyLevel: 5 },
+  { min: 82, max: 82, text: 'Spectre — DM’s discretion, 1d3 encountered', minPartyLevel: 5 },
+  { min: 83, max: 88, text: 'Thief — a level 1d4+7 thief with 1d3-1 apprentice thieves (level 1d4)' },
+  { min: 89, max: 90, text: 'Tradesman — 2d4 artisans, craftsmen, or skilled workmen (Normal Humans)' },
+  { min: 91, max: 93, text: 'Wererat — 2d4 encountered, mostly in human form, rarely giant rat form', minPartyLevel: 3 },
+  { min: 94, max: 94, text: 'Weretiger — 1d2 encountered, mostly in human form, rarely tiger form', minPartyLevel: 3 },
+  { min: 95, max: 96, text: 'Werewolf — 2d4 encountered, in human or wolf form', minPartyLevel: 3 },
+  { min: 97, max: 97, text: 'Wight — DM’s discretion, 1d4+1 encountered', minPartyLevel: 5 },
+  { min: 98, max: 98, text: 'Will-O-Wisp — DM’s discretion, 1d2 encountered', minPartyLevel: 5 },
+  { min: 99, max: 99, text: 'Wraith — DM’s discretion, 1d4 encountered', minPartyLevel: 5 },
+  { min: 100, max: 100, text: 'Vampire or Lich — 1 vampire (human, giant bat, or gaseous form), or rarely 1 lich', minPartyLevel: 8 },
+]
+
 const TABLES: Record<EncounterTableKey, string[]> = {
   Arctic: expandD100(ARCTIC),
   'Artisan District': expandD100(ARTISAN_DISTRICT),
+  'B/X Urban (Daytime)': expandD100(BX_URBAN_DAYTIME),
+  'B/X Urban (Nighttime)': expandD100(BX_URBAN_NIGHTTIME),
   'Castle District': expandD100(CASTLE_DISTRICT),
   Cave: expandD100(CAVE),
   'Deep Tunnels': expandD100(DEEP_TUNNELS),
@@ -1179,6 +1283,26 @@ const TABLES: Record<EncounterTableKey, string[]> = {
 export function encounterForD100(key: EncounterTableKey, roll: number): string {
   if (roll < 1 || roll > 100) throw new Error(`encounterForD100: roll out of range: ${roll}`)
   return TABLES[key][roll - 1]
+}
+
+function expandMinPartyLevel(entries: GatedRangeEntry[]): (number | undefined)[] {
+  const table = new Array<number | undefined>(100)
+  for (const { min, max, minPartyLevel } of entries) {
+    for (let i = min; i <= max; i++) table[i - 1] = minPartyLevel
+  }
+  return table
+}
+
+const BX_URBAN_MIN_PARTY_LEVEL: Record<BxUrbanEncounterTableKey, (number | undefined)[]> = {
+  'B/X Urban (Daytime)': expandMinPartyLevel(BX_URBAN_DAYTIME),
+  'B/X Urban (Nighttime)': expandMinPartyLevel(BX_URBAN_NIGHTTIME),
+}
+
+// undefined means "no gate" (most rows) — a defined number is the minimum party level per
+// Urban Encounter Level. See engine/rollEncounter.ts's rollBxUrbanEncounter for enforcement.
+export function minPartyLevelForBxUrbanEncounter(key: BxUrbanEncounterTableKey, roll: number): number | undefined {
+  if (roll < 1 || roll > 100) throw new Error(`minPartyLevelForBxUrbanEncounter: roll out of range: ${roll}`)
+  return BX_URBAN_MIN_PARTY_LEVEL[key][roll - 1]
 }
 
 // Overland Terrain -> encounter table key(s). Two overland terrains each merge two book

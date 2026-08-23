@@ -22,12 +22,14 @@
 //   rolled level count is 1 (the Small tier's minimum), the "top level" and the entry hall are
 //   the same room, which falls out of the loop below without needing a special case.
 
-import { rollDie, type Rng } from './dice'
-import { siteSizeForD6, towerLevelRangeForSize, dungeonDangerForD6, type SiteSize } from '../data/dungeonTables'
+import { rollDie, rollInRange, type Rng } from './dice'
+import { siteSizeForD6, towerLevelRangeForSize, dungeonDangerForD6, dungeonLevelBandForDanger, dungeonScenarioForD10, type SiteSize } from '../data/dungeonTables'
 import type { DangerLevel } from '../data/tables'
 import { rollRoomContent, type GeneratedMonster, type GeneratedNpc } from './roomContent'
 import { rollMonsterTheme } from '../data/monsterTables'
 import type { RoomType } from '../data/dungeonTables'
+import type { RolledTreasure } from './generateTreasure'
+import type { RolledTrap } from './generateDressing'
 
 export type TowerRoom = {
   id: string
@@ -38,6 +40,8 @@ export type TowerRoom = {
   detail?: string
   monster?: GeneratedMonster
   npc?: GeneratedNpc
+  treasure?: RolledTreasure
+  trap?: RolledTrap
   isObjectiveRoom: boolean
 }
 
@@ -45,6 +49,8 @@ export type TowerSite = {
   kind: 'tower'
   size: SiteSize
   danger: DangerLevel
+  dungeonLevel: number
+  scenario: string
   levelCount: number
   rooms: TowerRoom[]
   connections: [string, string][]
@@ -59,6 +65,9 @@ function rollTowerLevelCount(size: SiteSize, rng: Rng): number {
 export function generateTowerSite(rng: Rng = Math.random): TowerSite {
   const size = siteSizeForD6(rollDie(6, rng)).size
   const danger = dungeonDangerForD6(rollDie(6, rng))
+  const levelBand = dungeonLevelBandForDanger(danger)
+  const dungeonLevel = rollInRange(levelBand.min, levelBand.max, rng)
+  const scenario = dungeonScenarioForD10(rollDie(10, rng))
   const levelCount = rollTowerLevelCount(size, rng)
   // Rolled once per site (Tower has no SiteType, so this picks uniformly across all categories),
   // not once per room — see monsterTables.ts's rollMonsterTheme.
@@ -68,7 +77,7 @@ export function generateTowerSite(rng: Rng = Math.random): TowerSite {
   const connections: [string, string][] = []
 
   function rollRoom(id: string, levelIndex: number, isGuardRoom: boolean): TowerRoom {
-    const content = rollRoomContent(rng, monsterTheme)
+    const content = rollRoomContent(rng, monsterTheme, dungeonLevel)
     return { id, levelIndex, isGuardRoom, ...content, isObjectiveRoom: false }
   }
 
@@ -90,5 +99,5 @@ export function generateTowerSite(rng: Rng = Math.random): TowerSite {
   const topIndex = rooms.findIndex((r) => r.id === previousMainRoomId)
   rooms[topIndex] = { ...rooms[topIndex], isObjectiveRoom: true }
 
-  return { kind: 'tower', size, danger, levelCount, rooms, connections }
+  return { kind: 'tower', size, danger, dungeonLevel, scenario, levelCount, rooms, connections }
 }

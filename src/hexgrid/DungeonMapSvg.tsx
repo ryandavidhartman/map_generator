@@ -44,19 +44,54 @@ const TSR_BLUE_LIGHT = '#bcd4fb'
 
 const WALL_STROKE_UNITS = 0.22
 const CORRIDOR_HALF_WIDTH_UNITS = 0.55
-const RECT_ROOM_INSET_UNITS = 0.9 // gap left around rectangular rooms so corridors stay visible
-const DOOR_THICKNESS_UNITS = 0.35
+// dungeonLayout.ts's rects always share an exact boundary when connected (zero real distance
+// between them) — this inset exists only to draw a thin wall seam between adjacent rooms, NOT to
+// create room for a hallway. Keep it small: it used to be 0.9 units, big enough to read as a
+// detached corridor stub with a floating door in the middle rather than a doorway cut into a
+// shared wall (see the file header's "Follow-up fix" note for the full story).
+const RECT_ROOM_INSET_UNITS = 0.15
 
 function pointsAttr(polygon: Point[]): string {
   return polygon.map((p) => `${p.x},${p.y}`).join(' ')
 }
 
-// Where a ray from a rectangle's center towards `towards` exits the rectangle's boundary —
-// used so a rect-style corridor's visible line only spans the true gap between two rooms'
-// boundaries, not the full center-to-center diagonal (which, left undipped, pokes out past a
-// room's edge as an ugly diagonal spur whenever two rooms aren't aligned on the same axis; the
-// old "painted VTT" palette hid this under its busier textures, but the two-tone TSR scheme's
-// flat blue background makes any diagonal spur immediately obvious).
+function clamp(v: number, min: number, max: number): number {
+  return Math.min(Math.max(v, min), max)
+}
+
+type Rect = DungeonMapRoomData['rect']
+const ADJACENCY_EPS = 1e-6
+
+function overlapRange(aMin: number, aMax: number, bMin: number, bMax: number): [number, number] | null {
+  const lo = Math.max(aMin, bMin)
+  const hi = Math.min(aMax, bMax)
+  return hi > lo + ADJACENCY_EPS ? [lo, hi] : null
+}
+
+// dungeonLayout.ts's rectsShareEdge guarantees every connection is an exact axis-aligned shared
+// wall (never a corner-only touch or a diagonal relationship) — this mirrors that same check so
+// the rendered corridor runs straight through the real shared wall instead of the old diagonal
+// center-to-center ray, which read as a floating sliver detached from the room whenever the two
+// rooms' centers weren't aligned with the wall between them (the source of the "hallways don't
+// touch the rooms" / "doors in a weird place" bug).
+function rectAdjacency(a: Rect, b: Rect): { axis: 'x' | 'y'; overlapMid: number } | null {
+  const sharedVerticalWall =
+    Math.abs(a.x + a.width - b.x) < ADJACENCY_EPS || Math.abs(b.x + b.width - a.x) < ADJACENCY_EPS
+  if (sharedVerticalWall) {
+    const overlap = overlapRange(a.y, a.y + a.height, b.y, b.y + b.height)
+    if (overlap) return { axis: 'x', overlapMid: (overlap[0] + overlap[1]) / 2 }
+  }
+  const sharedHorizontalWall =
+    Math.abs(a.y + a.height - b.y) < ADJACENCY_EPS || Math.abs(b.y + b.height - a.y) < ADJACENCY_EPS
+  if (sharedHorizontalWall) {
+    const overlap = overlapRange(a.x, a.x + a.width, b.x, b.x + b.width)
+    if (overlap) return { axis: 'y', overlapMid: (overlap[0] + overlap[1]) / 2 }
+  }
+  return null
+}
+
+// Fallback only — real dungeon connections always satisfy rectAdjacency above. Where a ray from
+// a rectangle's center towards `towards` exits the rectangle's boundary.
 function exitPointFromRect(center: Point, halfWidth: number, halfHeight: number, towards: Point): Point {
   const dx = towards.x - center.x
   const dy = towards.y - center.y
@@ -94,7 +129,11 @@ export function DungeonMapSvg({ rooms, connections, caveStyle = false, unitSize 
   const wallStroke = WALL_STROKE_UNITS * unitSize
   const corridorHalfWidth = CORRIDOR_HALF_WIDTH_UNITS * unitSize
   const roomInset = RECT_ROOM_INSET_UNITS * unitSize
-  const doorThickness = DOOR_THICKNESS_UNITS * unitSize
+  // Two adjacent rect rooms are always exactly `2 * roomInset` apart (see the constant's own
+  // comment) — the door is sized to fully bridge that gap, plus a little overlap into each
+  // room's own wall stroke, so it reads as a notch cut into a continuous wall rather than a
+  // separate rectangle floating in a gap that doesn't quite reach either room.
+  const doorThickness = roomInset * 2 + wallStroke
   const gridTile = unitSize / 3
 
   function toPx(x: number, y: number): Point {
@@ -206,29 +245,58 @@ export function DungeonMapSvg({ rooms, connections, caveStyle = false, unitSize 
 
         const outerA = outerRectPx(a.rect)
         const outerB = outerRectPx(b.rect)
-        const exitA = exitPointFromRect(ca, outerA.width / 2, outerA.height / 2, cb)
-        const exitB = exitPointFromRect(cb, outerB.width / 2, outerB.height / 2, ca)
+        const adjacency = rectAdjacency(a.rect, b.rect)
+
+        let exitA: Point
+        let exitB: Point
+        if (adjacency) {
+          if (adjacency.axis === 'x') {
+            // Shared vertical wall — rooms sit side by side, corridor runs horizontally between
+            // the two rooms' facing (inset) edges, at the vertical midpoint of their true overlap.
+            const rawY = adjacency.overlapMid * unitSize + pad
+            const rangeMin = Math.max(outerA.y, outerB.y)
+            const rangeMax = Math.min(outerA.y + outerA.height, outerB.y + outerB.height)
+            const y = rangeMin <= rangeMax ? clamp(rawY, rangeMin, rangeMax) : (rangeMin + rangeMax) / 2
+            const aIsLeft = a.rect.x < b.rect.x
+            exitA = { x: aIsLeft ? outerA.x + outerA.width : outerA.x, y }
+            exitB = { x: aIsLeft ? outerB.x : outerB.x + outerB.width, y }
+          } else {
+            // Shared horizontal wall — rooms stack top/bottom, corridor runs vertically.
+            const rawX = adjacency.overlapMid * unitSize + pad
+            const rangeMin = Math.max(outerA.x, outerB.x)
+            const rangeMax = Math.min(outerA.x + outerA.width, outerB.x + outerB.width)
+            const x = rangeMin <= rangeMax ? clamp(rawX, rangeMin, rangeMax) : (rangeMin + rangeMax) / 2
+            const aIsTop = a.rect.y < b.rect.y
+            exitA = { x, y: aIsTop ? outerA.y + outerA.height : outerA.y }
+            exitB = { x, y: aIsTop ? outerB.y : outerB.y + outerB.height }
+          }
+        } else {
+          exitA = exitPointFromRect(ca, outerA.width / 2, outerA.height / 2, cb)
+          exitB = exitPointFromRect(cb, outerB.width / 2, outerB.height / 2, ca)
+        }
 
         const angleRad = Math.atan2(exitB.y - exitA.y, exitB.x - exitA.x)
         const angleDeg = (angleRad * 180) / Math.PI
         const mid = { x: (exitA.x + exitB.x) / 2, y: (exitA.y + exitB.y) / 2 }
         const doorSpan = corridorHalfWidth * 2
 
+        // No separate corridor line here: adjacent rooms are always exactly `2 * roomInset` apart
+        // (a true wall seam, not hallway-length distance), and doorThickness is sized to fully
+        // bridge that gap on its own — a corridor stub would either be entirely hidden under the
+        // door or, if it peeked out, read as the same "detached floating segment" bug this was
+        // fixed for. The door rect IS the connection between the two rooms.
         return (
-          <g key={`${aId}-${bId}`}>
-            <line x1={exitA.x} y1={exitA.y} x2={exitB.x} y2={exitB.y} stroke={TSR_BLUE} strokeWidth={(corridorHalfWidth + wallStroke) * 2} strokeLinecap="round" />
-            <line x1={exitA.x} y1={exitA.y} x2={exitB.x} y2={exitB.y} stroke="url(#tsr-grid)" strokeWidth={corridorHalfWidth * 2} strokeLinecap="round" />
-            <rect
-              x={mid.x - doorSpan / 2}
-              y={mid.y - doorThickness / 2}
-              width={doorSpan}
-              height={doorThickness}
-              fill="#ffffff"
-              stroke={TSR_BLUE}
-              strokeWidth={wallStroke * 0.6}
-              transform={`rotate(${angleDeg + 90} ${mid.x} ${mid.y})`}
-            />
-          </g>
+          <rect
+            key={`${aId}-${bId}`}
+            x={mid.x - doorSpan / 2}
+            y={mid.y - doorThickness / 2}
+            width={doorSpan}
+            height={doorThickness}
+            fill="url(#tsr-grid)"
+            stroke={TSR_BLUE}
+            strokeWidth={wallStroke * 0.6}
+            transform={`rotate(${angleDeg + 90} ${mid.x} ${mid.y})`}
+          />
         )
       })}
 

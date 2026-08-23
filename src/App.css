@@ -26,6 +26,30 @@
   background: #3f4250;
 }
 
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.party-level-control {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9em;
+  color: #9ca3af;
+}
+
+.party-level-control input,
+.party-level-control select {
+  width: 3.5rem;
+  background: #2e303a;
+  color: #f3f4f6;
+  border: 1px solid #3f4250;
+  border-radius: 4px;
+  padding: 0.3rem 0.4rem;
+}
+
 .start-screen {
   flex: 1;
   display: flex;
@@ -183,6 +207,11 @@ button.primary:hover {
   color: #d1d5db;
 }
 
+.encounter-purpose {
+  color: #9ca3af;
+  font-size: 0.85em;
+}
+
 .wilderness-note {
   color: #9ca3af;
   font-style: italic;
@@ -194,6 +223,12 @@ button.primary:hover {
 
 .site-section {
   margin-top: 1.5rem;
+}
+
+.site-scenario {
+  margin: 0.25rem 0 0;
+  font-style: italic;
+  color: #9ca3af;
 }
 
 .site-section-header {
@@ -228,7 +263,8 @@ button.primary:hover {
 }
 
 .room-list,
-.district-list {
+.district-list,
+.civic-amenity-list {
   list-style: none;
   margin: 1rem 0 0;
   padding: 0;
@@ -238,7 +274,8 @@ button.primary:hover {
 }
 
 .room-list li,
-.district-list li {
+.district-list li,
+.civic-amenity-list li {
   background: #16171d;
   border: 1px solid #2e303a;
   border-radius: 6px;
@@ -285,6 +322,79 @@ button.primary:hover {
   border-radius: 4px;
   padding: 0.5rem 0.7rem;
   margin-top: 0.5rem;
+}
+
+.settlement-summary {
+  margin: 0.5rem 0 0;
+  color: #d1d5db;
+}
+
+.settlement-summary-notes {
+  margin: 0.15rem 0 0;
+  color: #9ca3af;
+  font-style: italic;
+  font-size: 0.9em;
+}
+
+.dressing-roller,
+.trick-roller {
+  margin-top: 0.5rem;
+}
+
+.dressing-roller button,
+.trick-roller button {
+  background: #2e303a;
+  color: #f3f4f6;
+  border: 1px solid #3f4250;
+  border-radius: 4px;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.85em;
+}
+
+.dressing-result,
+.trick-result {
+  margin: 0.4rem 0 0;
+  font-style: italic;
+  color: #9ca3af;
+  font-size: 0.9em;
+}
+
+.prices-panel {
+  margin-top: 1rem;
+  border-top: 1px solid #2e303a;
+  padding-top: 0.75rem;
+}
+
+.prices-panel summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #f3f4f6;
+}
+
+.prices-panel-content {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-top: 0.75rem;
+}
+
+.price-table h4 {
+  margin: 0 0 0.35rem;
+  font-size: 0.95em;
+  color: #d1d5db;
+}
+
+.price-table table {
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+
+.price-table td,
+.price-table th {
+  padding: 0.15rem 0.6rem 0.15rem 0;
+  color: #9ca3af;
+  text-align: left;
 }
 
 .legend {

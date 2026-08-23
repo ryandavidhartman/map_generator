@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { siteSizeForD6, siteTypeForD6, roomTypeForD10, roomDetailForType, ROOM_TYPE_NEEDS_TWO_ROLLS, dungeonDangerForD6, type RoomType } from './dungeonTables'
+import { siteSizeForD6, siteTypeForD6, roomTypeForD10, roomDetailForType, ROOM_TYPE_NEEDS_TWO_ROLLS, dungeonDangerForD6, dungeonLevelBandForDanger, dungeonScenarioForD10, type RoomType } from './dungeonTables'
 
 describe('Site Size table (d6)', () => {
   it.each([
@@ -90,5 +90,38 @@ describe('dungeon Danger Level table (d6)', () => {
     [6, 'Deadly'],
   ] as const)('roll %i -> %s (no Safe outcome, unlike the overland table)', (roll, level) => {
     expect(dungeonDangerForD6(roll)).toBe(level)
+  })
+})
+
+describe('Dungeon Level band by Danger', () => {
+  it.each([
+    ['Safe', { min: 1, max: 3 }],
+    ['Unsafe', { min: 1, max: 4 }],
+    ['Risky', { min: 5, max: 9 }],
+    ['Deadly', { min: 10, max: 16 }],
+  ] as const)('%s -> %o', (danger, band) => {
+    expect(dungeonLevelBandForDanger(danger)).toEqual(band)
+  })
+})
+
+describe('Scenario table (d10)', () => {
+  it.each([
+    [1, 'Exploring the Unknown'],
+    [2, 'Investigating a Chaotic Outpost'],
+    [3, 'Recovering Ruins'],
+    [4, 'Destroying an Ancient Evil'],
+    [5, 'Visiting a Lost Shrine'],
+    [6, 'Fulfilling a Quest'],
+    [7, 'Escaping from Enemies'],
+    [8, 'Rescuing Prisoners'],
+    [9, 'Using a Magic Portal'],
+    [10, 'Finding a Lost Race'],
+  ] as const)('roll %i -> %s', (roll, scenario) => {
+    expect(dungeonScenarioForD10(roll)).toBe(scenario)
+  })
+
+  it('throws out of range', () => {
+    expect(() => dungeonScenarioForD10(0)).toThrow()
+    expect(() => dungeonScenarioForD10(11)).toThrow()
   })
 })
