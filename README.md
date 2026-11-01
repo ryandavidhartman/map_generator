@@ -1,35 +1,39 @@
-# React + TypeScript + Vite
+# OSR Hex Crawl Generator
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A React web app for running overland hex crawls in OSR-style tabletop RPGs. The GM starts on a
+single hex and reveals the map one adjacent hex at a time, rolling terrain, danger and points of
+interest as the party explores. Points of interest open into generated sites (dungeons,
+settlements, towers, keeps, camps, shrines and rifts), each with its own map, contents and
+on-demand rollers for encounters, treasure, traps and dungeon dressing.
 
-Currently, two official plugins are available:
+The map is unbounded and saved automatically in the browser (localStorage).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Getting started
 
-## React Compiler
+Requires Node 20.16.0 (see `.nvmrc`).
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+nvm use
+npm install
+npm run dev        # http://localhost:5173
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Other commands:
+
+```bash
+npm run test       # run the Vitest suite
+npm run build      # typecheck and build for production
+npx tsc -b         # typecheck only
+```
+
+## Using it
+
+- **Overland map** (`/`): click a hex next to the party to move there and reveal it; drag to
+  pan, scroll to zoom. Double-click a hex to open its detail view.
+- **Hex detail** (`/hex/:hexId`): terrain, danger, encounter rolls, and the generated site for
+  the hex's point of interest, if it has one.
+- **Feature preview** (`/poi/1` to `/poi/200`): generate any row of the d200 Feature table on a
+  throwaway map. Handy for browsing site types without exploring to find them.
 
 ## License
 
