@@ -156,7 +156,9 @@ feature); map export; undo.
 - Don't commit unless asked.
 - **License: CC BY-SA 4.0** (`LICENSE`, README "License" section), chosen 2026-11-01 to match
   Basic Fantasy RPG 4th Edition. Credit any newly adapted Basic Fantasy material in the README's
-  Attribution section. Don't name any other game, publisher or rulebook anywhere in the project — say
+  Attribution section. The "OSR" tables (`docs/osr-appendix-cde-source.txt`,
+  `combined-monsters.pdf/.md`) are a local compilation of the Basic Fantasy RPG core rules and
+  Basic Fantasy Field Guide (user, 2026-11-01), credited in the README. Don't name any other game, publisher or rulebook anywhere in the project — say
   "core rules" or "OSR" instead (user rule, 2026-11-01).
 
 ## Stack and environment gotchas

@@ -238,7 +238,7 @@ export function effectiveDungeonLevel(dungeonLevel: number, hexDangerLevel: numb
   return Math.max(1, dungeonLevel + hexDangerLevel + dangerLevelDelta(siteDanger))
 }
 
-// Scenarios (d10) — transcribed verbatim from the OSR compilation's Appendix D: The Encounter
+// Scenarios (d10) — transcribed verbatim from the Basic Fantasy compilation's (core rules + Field Guide) Appendix D: The Encounter
 // Builder (docs/osr-appendix-cde-source.txt, ~lines 1978-1988). A dungeon's "reason to exist" —
 // the dungeon-side equivalent of nothing this project had before (OSR integration,
 // round 2). Rolled once per dungeon-shaped site (Cave/Tomb/Deep tunnels/Ruins/Tower/Keep — the

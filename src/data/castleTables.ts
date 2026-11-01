@@ -1,4 +1,4 @@
-// Transcribed from the OSR compilation's Appendix C: Random Encounters — "Castle Encounters"
+// Transcribed from the Basic Fantasy compilation's (core rules + Field Guide) Appendix C: Random Encounters — "Castle Encounters"
 // (docs/osr-appendix-cde-source.txt, ~lines 1904-1927). OSR integration, round 2, Phase 3
 // — see docs/plan-osr-integration.md. Wired to this project's Keep site kind only (the
 // book's "castle" is exactly what Keep already models: a fortified compound with a lord and a

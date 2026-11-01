@@ -1,4 +1,4 @@
-// Transcribed verbatim from the OSR compilation's Appendix C: Random Encounters — "Wilderness
+// Transcribed verbatim from the Basic Fantasy compilation's (core rules + Field Guide) Appendix C: Random Encounters — "Wilderness
 // Encounters" section (docs/osr-appendix-cde-source.txt, lines 839-1677; source PDF
 // combined-monsters.md, Appendix C). Replaces the old
 // category-only wilderness gating (rollEncounter.ts's now-removed excludedCategoriesForHexDangerLevel)

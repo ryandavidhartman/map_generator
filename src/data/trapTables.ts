@@ -1,4 +1,4 @@
-// Transcribed from the OSR compilation's Appendix D: The Encounter Builder — "Random Trap
+// Transcribed from the Basic Fantasy compilation's (core rules + Field Guide) Appendix D: The Encounter Builder — "Random Trap
 // Generation" (a 50-entry d% table, 2 rolls per entry). Source text:
 // docs/osr-appendix-cde-source.txt, ~lines 2533-2567.
 //

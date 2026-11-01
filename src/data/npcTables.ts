@@ -1,4 +1,4 @@
-// Settlement NPC population — transcribed verbatim from the user's own OSR compilation,
+// Settlement NPC population — transcribed verbatim from the Basic Fantasy compilation (core rules + Field Guide),
 // Appendix C: Random Encounters' "Urban Encounters" section:
 // combined-monsters.pdf (pp. 162-163). Confirmed scope
 // (2026-07-06, same pattern as the dungeon monster/NPC population phase): name-only flavor

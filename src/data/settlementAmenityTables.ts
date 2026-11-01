@@ -1,4 +1,4 @@
-// Transcribed from the OSR compilation's Appendix E: Random Settlement Builder — "Points of
+// Transcribed from the Basic Fantasy compilation's (core rules + Field Guide) Appendix E: Random Settlement Builder — "Points of
 // Interest" (docs/osr-appendix-cde-source.txt, ~lines 3150-3193). OSR integration, round 2,
 // Phase 6 (the last of round 2) — see docs/plan-osr-integration.md.
 //

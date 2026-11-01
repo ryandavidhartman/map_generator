@@ -1,4 +1,4 @@
-// Transcribed verbatim from the OSR compilation's Appendix C: Random Encounters — "Dungeon
+// Transcribed verbatim from the Basic Fantasy compilation's (core rules + Field Guide) Appendix C: Random Encounters — "Dungeon
 // Random Encounters" section (docs/osr-appendix-cde-source.txt, lines 100-571; source PDF
 // combined-monsters.md, Appendix C). This replaces the
 // invented category/theme system in monsterTables.ts (rollMonsterTheme, SITE_TYPE_CATEGORY_

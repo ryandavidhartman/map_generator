@@ -1,4 +1,4 @@
-// Transcribed from the OSR compilation's Appendix C: Random Encounters — "Encounter
+// Transcribed from the Basic Fantasy compilation's (core rules + Field Guide) Appendix C: Random Encounters — "Encounter
 // Frequency" (wilderness half only) and "Encounter Purpose". Source text:
 // docs/osr-appendix-cde-source.txt, ~lines 52-97.
 //

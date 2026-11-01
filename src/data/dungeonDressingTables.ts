@@ -1,4 +1,4 @@
-// Transcribed from the OSR compilation's Appendix D: The Encounter Builder — "Dungeon
+// Transcribed from the Basic Fantasy compilation's (core rules + Field Guide) Appendix D: The Encounter Builder — "Dungeon
 // Dressing" (sensory detail tables: sights, sounds, smells). Source text:
 // docs/osr-appendix-cde-source.txt, ~lines 2061-2397.
 //

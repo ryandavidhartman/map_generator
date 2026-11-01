@@ -1,4 +1,4 @@
-// Transcribed from the OSR compilation's Appendix D: The Encounter Builder — "Tricks" (two
+// Transcribed from the Basic Fantasy compilation's (core rules + Field Guide) Appendix D: The Encounter Builder — "Tricks" (two
 // d100 tables: Trick Object + Trick Attribute). Source text: docs/osr-appendix-cde-source.txt,
 // ~lines 2576-2663. OSR integration, round 2, Phase 2 — see
 // docs/plan-osr-integration.md.

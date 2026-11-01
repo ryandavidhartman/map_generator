@@ -1,4 +1,4 @@
-// Transcribed from the OSR compilation's Appendix D: The Encounter Builder — Tables 9-12
+// Transcribed from the Basic Fantasy compilation's (core rules + Field Guide) Appendix D: The Encounter Builder — Tables 9-12
 // (Treasure Container, Guards & Wards, Hidden By/In, Treasure Amount). Source text:
 // docs/osr-appendix-cde-source.txt, ~lines 2858-2909 (extracted from
 // combined-monsters.pdf's Appendix D).

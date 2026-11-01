@@ -49,3 +49,12 @@ shared under the same license.
 Portions of the equipment, services and tavern price tables are adapted from the *Basic Fantasy
 RPG Equipment Emporium*, © Chris Gonnerman and contributors, Basic Fantasy Role-Playing Game
 project (https://www.basicfantasy.org), used under CC BY-SA 4.0.
+
+Portions of the monster encounter tables (dungeon and wilderness), encounter frequency and
+purpose, treasure types and treasure tables, traps, tricks, dungeon dressing, castle encounters,
+urban encounters and NPCs, settlement government and civic amenities, and monster treasure-type
+assignments are adapted from the *Basic Fantasy Role-Playing Game Core Rules* and *The Basic
+Fantasy Field Guide*, © Chris Gonnerman and contributors, Basic Fantasy Role-Playing Game
+project (https://www.basicfantasy.org), used under CC BY-SA 4.0. Changes: tables were
+transcribed into code, some were condensed or combined, a few selector dice were added where
+the source gives none (noted in each file's header comment), and some sub-tables were omitted.

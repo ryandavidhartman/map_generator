@@ -1,7 +1,7 @@
 // d100 encounter tables. The 21 terrain/district/dungeon/Tavern tables are original text written
 // for this project (source of truth: docs/original-text-encounters.md — edit there first, then
 // mirror here). Two more tables, 'OSR Urban (Daytime)' and 'OSR Urban (Nighttime)', are
-// transcribed from the OSR compilation's Appendix C (docs/osr-appendix-cde-source.txt, ~lines
+// transcribed from the Basic Fantasy compilation's (core rules + Field Guide) Appendix C (docs/osr-appendix-cde-source.txt, ~lines
 // 656-817; OSR integration round 2, Phase 5 — see docs/plan-osr-integration.md). Each table is
 // written as d100 ranges (e.g. 2-3) and expanded to a full 100-entry array at module load; "00"
 // means a roll of 100. The two OSR tables condense each row's "Encounter" + "# Encountered &

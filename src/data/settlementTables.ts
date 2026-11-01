@@ -86,7 +86,7 @@ export function districtPoiForD6(district: DistrictType, roll: number): string {
   return DISTRICT_POI[district][roll - 1]
 }
 
-// Government table (d6) — transcribed from the OSR compilation's Appendix E: Random
+// Government table (d6) — transcribed from the Basic Fantasy compilation's (core rules + Field Guide) Appendix E: Random
 // Settlement Builder (docs/osr-appendix-cde-source.txt, ~lines 3140-3152). Who actually runs
 // this settlement, layered on top of the core rules' existing district/POI/alignment system
 // (not a replacement for it) — see docs/plan-osr-integration.md, Phase 3.

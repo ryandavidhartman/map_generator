@@ -1,4 +1,4 @@
-// Transcribed from the OSR compilation's Appendix E: Random Settlement Builder —
+// Transcribed from the Basic Fantasy compilation's (core rules + Field Guide) Appendix E: Random Settlement Builder —
 // "Equipment and Services" (Weapons and Armor, General Equipment, Food and Lodging, Services,
 // At the Tavern). Source text: docs/osr-appendix-cde-source.txt, ~lines 3221-3327.
 //

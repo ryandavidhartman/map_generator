@@ -1,6 +1,6 @@
 // NPC archetype names for the core rules' own dungeon "NPC" Room Type (a captive/hiding/wounded
 // person, per the book-RAW descriptor table) — not personal names, and not monsters. Transcribed
-// from the user's own OSR retro-clone compilation's "NPCs" category:
+// from the Basic Fantasy compilation's (core rules + Field Guide) "NPCs" category:
 // combined-monsters.md. "Men"'s five named sub-types
 // (Brigand, Buccaneer/Pirate, Dervish, Merchant, Nomad) are listed individually rather than kept
 // as one generic "Men" entry.

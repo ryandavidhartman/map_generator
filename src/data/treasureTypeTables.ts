@@ -1,4 +1,4 @@
-// Transcribed verbatim from the OSR compilation's Appendix B: Treasure — "Treasure Types" (lair/
+// Transcribed verbatim from the Basic Fantasy compilation's (core rules + Field Guide) Appendix B: Treasure — "Treasure Types" (lair/
 // guarded hoards, letters A-O) and "Individuals' Treasure Type" (letters P-V). Source:
 // combined-monsters.md, Appendix B (~line 7121) — not
 // previously extracted into docs/osr-appendix-cde-source.txt (that file only covers Appendix
