@@ -74,17 +74,16 @@ user's own data.
        - OSR wilderness rows, transcribed verbatim: `HILLS_ENCOUNTER_CHANCE` and
          `HILLS_CATEGORY_TABLE` (`encounterFrequencyTables.ts`), and `HILLS`
          (`wildernessMonsterLevelTables.ts`).
-       - The d100 encounter table, original text approved by the user: `HILLS`
+       - The d100 encounter table, original text: `HILLS`
          (`encounterTables.ts`).
-       - Cataclysm and Natural landmark rows, approved by the user: `HILLS_CATACLYSMS` and
+       - Cataclysm and Natural landmark rows: `HILLS_CATACLYSMS` and
          `HILLS_NATURAL_LANDMARK` (`locationTables.ts`).
-       - The map color, approved by the user: `HILLS_COLOR` (`hexgrid/colors.ts`).
+       - The map color: `HILLS_COLOR` (`hexgrid/colors.ts`).
    - **Approach: a seeded world formula decides sea vs. land.** Each campaign gets a random
      seed. A noise formula, given the seed and a hex's position, says whether that spot is sea
      or land. Nothing is generated up front: the formula is only asked about hexes as they're
      revealed (and their neighbors), so the map stays unbounded, and the same hex always gets
-     the same answer whichever way the party approaches it. Local rules alone were tried in
-     simulation and can't produce large oceans when hexes are revealed one at a time.
+     the same answer whichever way the party approaches it.
    - **How a new hex is generated:**
      1. **Sea or land.** The formula decides. Sea → Ocean, and the remaining steps are skipped.
      2. **Land terrain.** Each land terrain's base frequency is multiplied by the pair weight
@@ -164,13 +163,19 @@ user's own data.
      - For now this is text only (a line on the site page saying "on a small island" or
        "underwater"). The site maps don't change.
    - **Overland map drawing:** a river is a simple blue line from edge to edge, and a lake a
-     small blue oval. The user approved this simple placeholder on 2026-11-02 (no reference
-     image); a nicer style can come later from a reference image.
+     small blue oval.
    - **Town-map water:**
      - A town's river follows its hex's actual river edges, in one side and out the other.
      - A coast faces the formula's sea (see the isthmus fix above).
      - A lake hex draws its town with a lakeshore on one side, reusing the coast drawing.
      - A Coast hex with no sea next to it (rare) draws no water.
+     - More than one kind of water on a hex: where a river meets the
+       sea, draw the coast and the river together; draw two rivers merging as two rivers
+       joining; a river that starts or ends inside the hex runs from the town's middle out to
+       its one edge.
+   - **Edit Hex:** a hand edit keeps the hex's river and lake as
+     they are, the river rules aren't enforced on edits, and the form gets no river or lake
+     controls for now.
    - **Leftover River/coast content:** Coast keeps the old River/coast Cataclysm and landmark
      rows as they are (river mouths are on coasts). The encounter table's label "River and
      Coast" becomes "Coast". River hexes on other terrains get no extra encounter table for now.
@@ -181,11 +186,10 @@ user's own data.
      - Seas the party reaches: mostly 100 hexes or bigger.
      - One-hex ponds: 5% or fewer.
      - Rivers: about 17% of land hexes. Lakes: about 5% of land hexes.
-   - **Supersedes** the old neighbor-weighted terrain sketch in
-     `docs/plan-sites-settlements-mongo.md`.
    - **Open questions:** none.
    - **Starting hex:** the world is placed so the starting hex agrees with the chosen terrain
-     (sea for Ocean, land otherwise).
+     (sea for Ocean, land otherwise). The start dialog's Random button rolls the new 3d6 table,
+     Ocean row included, for this one roll.
    - **Save-format impact:** the map gains a world seed; each hex gains river and lake data.
    - **All numbers are starting points,** to be tuned by simulation before anything ships.
 2. **Site map overhaul — Tower, Keep, Settlement, Camp done; Tombs/Ruins/Temples remain**
