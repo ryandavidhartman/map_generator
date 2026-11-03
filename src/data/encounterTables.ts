@@ -737,7 +737,7 @@ const MOUNTAIN: RangeEntry[] = [
   { min: 100, max: 100, text: "A peak splits open, revealing a sleeping titan's eye" },
 ]
 
-// Hills (added 2026-11-02 for punch-list item 1, which adds a Hills terrain). Original text,
+// Hills (added 2026-11-02 for punch-list item 1a, which adds a Hills terrain). Original text,
 // approved by the user 2026-11-02. Exported but not yet used: it becomes the 'Hills' encounter
 // table key when the Hills terrain is added to the Terrain type.
 export const HILLS: RangeEntry[] = [

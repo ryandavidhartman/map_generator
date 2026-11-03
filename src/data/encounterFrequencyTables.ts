@@ -29,7 +29,7 @@ const WILDERNESS_ENCOUNTER_CHANCE: Record<Terrain, number[]> = {
   Swamp: [5, 6],
 }
 
-// Hills (added 2026-11-02 for punch-list item 1, which adds a Hills terrain): the book's own
+// Hills (added 2026-11-02 for punch-list item 1a, which adds a Hills terrain): the book's own
 // "Hills 5-6" row. Exported but not yet used; it moves into WILDERNESS_ENCOUNTER_CHANCE when the
 // Hills terrain is added to the Terrain type.
 export const HILLS_ENCOUNTER_CHANCE: number[] = [5, 6]
@@ -200,7 +200,7 @@ const TERRAIN_CATEGORY_ROWS: Record<'Plains' | 'Jungle' | 'Aquatic' | 'Marine' |
     { min: 81, max: 95, category: 'Water' },
     { min: 96, max: 100, category: 'Special' },
   ],
-  // Hills (added 2026-11-02 for punch-list item 1), verbatim from the source's Hills row. Not
+  // Hills (added 2026-11-02 for punch-list item 1a), verbatim from the source's Hills row. Not
   // yet reached by any Terrain; exported via HILLS_CATEGORY_TABLE below until Hills exists.
   Hills: [
     { min: 1, max: 15, category: 'Airborne' },

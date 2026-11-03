@@ -10,7 +10,7 @@ export const TERRAIN_COLORS: Record<Terrain, string> = {
   Mountain: '#8a7f76',
 }
 
-// Hills (added 2026-11-02 for punch-list item 1): approved by the user. Moves into
+// Hills (added 2026-11-02 for punch-list item 1a): approved by the user. Moves into
 // TERRAIN_COLORS when Hills is added to the Terrain type.
 export const HILLS_COLOR = '#a39a5c'
 

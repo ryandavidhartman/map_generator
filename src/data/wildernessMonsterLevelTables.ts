@@ -122,7 +122,7 @@ const PLAINS: TerrainMonsterTable = {
 // rolls down each terrain table's column — a low-Danger hex only ever reaches the earlier, tamer
 // rows (the book's own ordering, weakest to strongest); a Danger Level 7+ hex is "exposed to the
 // full table, rare and legendary entries included."
-// Hills (added 2026-11-02 for punch-list item 1, which adds a Hills terrain). Transcribed
+// Hills (added 2026-11-02 for punch-list item 1a, which adds a Hills terrain). Transcribed
 // verbatim from the same source section's "Hills" tables. Exported but not yet used: it gets
 // wired into TERRAIN_MONSTER_TABLES when the Hills terrain is added to the Terrain type.
 export const HILLS: TerrainMonsterTable = {

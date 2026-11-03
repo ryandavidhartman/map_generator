@@ -217,7 +217,7 @@ const CATACLYSM_BY_TERRAIN: Record<Terrain, string[]> = {
   ],
 }
 
-// Hills (added 2026-11-02 for punch-list item 1, which adds a Hills terrain): the user's
+// Hills (added 2026-11-02 for punch-list item 1a, which adds a Hills terrain): the user's
 // approved Cataclysm d8 rows and Natural landmark. Exported but not yet used; they move into
 // CATACLYSM_BY_TERRAIN / NATURAL_LANDMARK_BY_TERRAIN when Hills is added to the Terrain type.
 export const HILLS_CATACLYSMS: string[] = [
