@@ -191,8 +191,15 @@ user's own data.
      screenshots.
    - A town's river follows its hex's actual river edges, in one side and out the other.
    - A coast faces the formula's sea (see item 1's isthmus fix).
-   - A lake hex draws its town with a lakeshore on one side, reusing the coast drawing.
+   - A lake hex draws its town with a lakeshore on one side, reusing the coast drawing. The
+     lakeshore goes opposite where a river flows in; with no inflowing river, its side is
+     picked from the seed.
+   - A river that ends in a lake on the same hex runs from its entry edge into the lakeshore.
+   - A lake hex that's also next to the sea shows only the coast (the lake still shows on the
+     overland map).
    - A Coast hex with no sea next to it (rare) draws no water.
+   - A town on an Ocean hex (the small-island case) is drawn as today: a coastal town facing
+     the sea, its side chosen by item 1's isthmus fix. A true island drawing can come later.
    - More than one kind of water on a hex: where a river meets the
      sea, draw the coast and the river together; draw two rivers merging as two rivers
      joining; a river that starts or ends inside the hex runs from the town's middle out to
