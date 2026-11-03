@@ -15,6 +15,9 @@ partly stale. Design docs, each the single source of truth for its area:
   first if that data changes), Mongo backend plan, neighbor-weighted terrain sketch.
 - `docs/plan-osr-integration.md` — OSR content integration (rounds 1-2 + fixes).
 - `docs/osr-appendix-cde-source.txt` — extracted OSR Appendix C/D/E source text.
+- `docs/original-text-encounters.md` — the 21 core d100 encounter tables (original text).
+- `docs/plan-settlement-map-overhaul.md`, `docs/plan-camp-map-overhaul.md` — the settlement and
+  camp map overhauls (references, user decisions, water rules).
 
 **`docs/` is local-only (gitignored since 2026-11-01) — a fresh clone won't have it.** Nothing
 in the app, tests or build reads it; it's the maintainer's design notes. Every `docs/...`
@@ -39,34 +42,18 @@ The faction system (and the propagation-rules plan built on it) was removed enti
 All campaigns/saves are test data — no migration or save-compatibility work is needed for the
 user's own data.
 
-**Done first (2026-11-01)**
-
-0. ✅ **Replace all core-rulebook text with original text — done 2026-11-01** (user ask: remove
-   the verbatim rulebook text, copyright-safe). Replaced: all 21 core d100 encounter tables
-   (`docs/original-text-encounters.md` is now their source of truth — edit there first),
-   every settlement table entry (district POIs, tavern/shop names, known-for, food, drinks with
-   OSR-style effects, shop types, customers), the dungeon detail tables (trap/mob/solo word
-   pairs, hazards, NPC, treasure, boss), and the 24 rulebook settlement names (rows 1-8 of each
-   column; the user's rows 9-20 kept). Kept as generic labels: terrain, danger, site type/size,
-   room type, district and settlement type names, and all dice structures. The guarded treasure
-   result is now `TREASURE_GUARDED_DETAIL` ("Watched by a monster") in `dungeonTables.ts`.
-   Page citations and quoted book text scrubbed from `docs/`. OSR/Basic Fantasy content and the
-   user's own tables (Location Generator, Shrine, Rift, Camp) were out of scope. GitHub history
-   was already squashed; the change just needs pushing.
-
 **Core roadmap**
 
-1. ✅ **Site map overhaul: Tower, Keep, Settlement, Camp all done** — moved to the top
-   2026-10-31; the user judged the feature-site maps (towers, keeps, etc.) as needing a lot of
-   improvement. Absorbs the old "classic-blue renderer rewrite for Settlement/Keep/Tower/Camp"
-   item (Dungeon's classic-blue rewrite is done: blue-field / white-room two-tone). **Blocked on a
-   reference image per site kind** (project rule: no visual revision without one; don't assume
-   the dungeon scheme carries over). Still to clarify with the user: style only (renderer
-   rewrite, like Dungeon's classic-blue pass), layout too (generator/layout changes — e.g. Tower as a
-   stacked chain, Keep as a grid block don't read as real places), or both; and exactly which
-   site kinds. Placed ahead of tracking because tracking's planned map markers (cleared/looted
-   rooms) would otherwise be built twice, and any layout change alters generated data (do it
-   before Mongo). While blocked, tracking proceeds without its map-marker part.
+1. **Site map overhaul — Tower, Keep, Settlement, Camp done; Tombs/Ruins/Temples remain**
+   (see the ⬜ entry below). Moved to the top 2026-10-31; the user judged the feature-site maps
+   as needing a lot of improvement. Absorbs the old "classic-blue renderer rewrite for
+   Settlement/Keep/Tower/Camp" item (Dungeon's classic-blue rewrite is done: blue-field /
+   white-room two-tone). Each kind needs its own reference image (project rule: no visual
+   revision without one; don't assume another kind's scheme carries over), and style-only vs.
+   layout changes must be confirmed per kind. Placed ahead of tracking because tracking's
+   planned map markers (cleared/looted rooms) would otherwise be built twice, and any layout
+   change alters generated data (do it before Mongo). While the remaining kinds are blocked,
+   tracking can proceed without its map-marker part.
    ✅ **Tower — done 2026-10-31, browser-verified.** Reference:
    https://i.pinimg.com/1200x/d5/12/40/d5124032d9495aa2a26f8881308a7a5c.jpg (side-view tower
    beside stacked top-down plans). Decisions: side view + per-floor plans; black line art on
@@ -85,7 +72,8 @@ user's own data.
    edges, suburbs). Full spec, user decisions and both references:
    `docs/plan-settlement-map-overhaul.md`. Unlike Tower/Keep it's a **color** map (user's
    choice). **User rule for water: it must make sense for the hex the settlement is in** —
-   implemented as `settlementPlan.ts`'s `waterForHex` (rules table in the plan doc): coast
+   implemented as `settlementPlan.ts`'s `waterForHex`, fed from the overland map by
+   `waterForMapHex` (rules table in the plan doc and in `settlementWater.test.ts`'s header): coast
    toward Ocean neighbors (or a random side for an Ocean hex with none revealed), a river for a
    River/coast hex with no Ocean neighbor, otherwise nothing.
    ✅ **Camp — done 2026-10-31, browser-verified.** Color, painted forest-clearing style;
@@ -124,13 +112,18 @@ user's own data.
    referenced by its test. Reuse `EncounterRoller`.
 6. **Avoid duplicate room detail text within one dungeon** — reroll once on an exact match
    (book RAW allows duplicates; pure variety improvement).
-7. **Profession-aware NPC activity tier** — `npcTables.ts`'s 1d5 tier is independent of
+7. **Isthmus coasts — awaiting user decision (raised 2026-11-02).** `waterForHex` averages
+   the Ocean neighbors' directions; Ocean on opposite sides (or on every other side) cancels
+   out, so the coast's side comes from rounding noise and can face land. Options put to the
+   user: (a) fall back to one real Ocean neighbor, seeded; (b) draw sea on both sides (big
+   change); (c) leave it. Recommended (a). Pinned as an `it.todo` in `settlementWater.test.ts`.
+8. **Profession-aware NPC activity tier** — `npcTables.ts`'s 1d5 tier is independent of
    profession (e.g. "Dwarf Labourer — Infirm"). Only if it bothers the user in play.
 
 **Blocked on content from the user** (item 1 is also blocked on reference images)
 
-8. **Encounter tables for Tower/Shrine/Rift/Keep/Camp** — none exist yet.
-9. **Camp central-feature table** — currently a generic placeholder.
+9. **Encounter tables for Tower/Shrine/Rift/Keep/Camp** — none exist yet.
+10. **Camp central-feature table** — currently a generic placeholder.
 
 Deliberately not built: a turn-clock state machine; OSR's full procedural dungeon crawler; NPC
 adventuring parties; combat stat blocks (name/flavor only — real stats are a future Mongo
@@ -150,7 +143,8 @@ feature); map export; undo.
 - **Cross-axis validity.** When a model has independent rolled axes, check that combinations
   make sense, not just that each field type-checks (e.g. a Boss Monster that rolls a giant
   ferret, or an NPC's activity tier clashing with their profession).
-- **Schema growth.** `MapContext.tsx`'s `initMapState` merges a loaded save over
+- **Schema growth.** `mapReducer.ts`'s `withMapStateDefaults` (called by `MapContext.tsx`'s
+  `initMapState`; tested in `persistence/localStorage.test.ts`) merges a loaded save over
   `EMPTY_MAP_STATE`, so new top-level `MapState` fields get defaults. A field that's present but
   needs content needs an explicit backfill there. Per-hex fields aren't covered by the merge.
 - Don't commit unless asked.
@@ -158,8 +152,9 @@ feature); map export; undo.
   Basic Fantasy RPG 4th Edition. Credit any newly adapted Basic Fantasy material in the README's
   Attribution section. The "OSR" tables (`docs/osr-appendix-cde-source.txt`,
   `combined-monsters.pdf/.md`) are a local compilation of the Basic Fantasy RPG core rules and
-  Basic Fantasy Field Guide (user, 2026-11-01), credited in the README. Don't name any other game, publisher or rulebook anywhere in the project — say
-  "core rules" or "OSR" instead (user rule, 2026-11-01).
+  Basic Fantasy Field Guide (user, 2026-11-01), credited in the README. The `combined-monsters`
+  files live outside the repo (not in `docs/` either). Don't name any other game, publisher or
+  rulebook anywhere in the project — say "core rules" or "OSR" instead (user rule, 2026-11-01).
 
 ## Stack and environment gotchas
 
@@ -180,7 +175,7 @@ feature); map export; undo.
 source ~/.nvm/nvm.sh && nvm use   # Node 20.16.0
 npm install
 npm run dev        # http://localhost:5173
-npm run test       # Vitest (515 tests as of 2026-10-31)
+npm run test       # Vitest (1012 tests + 1 todo in 46 files as of 2026-11-02)
 npm run build      # tsc -b && vite build
 npx tsc -b         # typecheck only
 ```
@@ -380,9 +375,12 @@ danger; **single click moves the party (250 ms debounce), double click opens `/h
 
 ## Verifying UI changes in a browser
 
-Typecheck and tests aren't enough for UI work — drive a real browser. Playwright isn't a
+`src/components/siteViews.render.test.tsx` renders every view to static HTML (every d200
+Feature row × 2 seeds, the overland map, every route) and fails on crashes, React warnings,
+`NaN`/`undefined` in markup, or rooms/districts/features missing from a map. It can't see
+effects, layout or looks. Typecheck and tests aren't enough for UI work — drive a real browser. Playwright isn't a
 project dependency: install `playwright` in a scratch dir (one existed at
-`/tmp/pw-scratch/node_modules/playwright` as of 2026-10-31 — `/tmp` may be wiped), run
+`/tmp/pw-scratch/node_modules/playwright` as of 2026-11-02 — `/tmp` may be wiped), run
 `npx playwright install chromium` if the cached browser doesn't match, and launch with
 `chromium.launch({ args: ['--no-sandbox'] })` from a plain Node 20 script against
 `npm run dev`.

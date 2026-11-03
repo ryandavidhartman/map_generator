@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react'
 import { useMapDispatch, useMapState } from '../../state/MapContext'
-import { axialToPixel, hexId, neighborsOf } from '../../hexgrid/hexMath'
 import type { Hex } from '../../state/mapReducer'
 import type { Settlement, District } from '../../engine/generateSettlement'
 import { SettlementMapSvg, type SettlementMapDistrictData } from '../../hexgrid/SettlementMapSvg'
-import { computeSettlementPlan, waterForHex, type OutlineShape, type PlanWater, type StreetPattern } from '../../engine/settlementPlan'
+import { computeSettlementPlan, waterForMapHex, type OutlineShape, type PlanWater, type StreetPattern } from '../../engine/settlementPlan'
 import { DISTRICT_TYPE_TO_ENCOUNTER_KEY } from '../../data/encounterTables'
 import { generateTavern, type Tavern } from '../../engine/generateTavern'
 import { generateShop, type Shop } from '../../engine/generateShop'
@@ -55,16 +54,7 @@ export function SettlementView({ hex, site }: { hex: Hex; site: Settlement }) {
   // The water follows the hex (user rule): its own terrain plus its revealed neighbors, each
   // with its direction from this hex on the overland map.
   const mapState = useMapState()
-  const water = useMemo(() => {
-    const center = axialToPixel(hex, 1)
-    const neighbors = neighborsOf(hex).flatMap((coord) => {
-      const neighbor = mapState.hexes[hexId(coord)]
-      if (!neighbor) return []
-      const p = axialToPixel(coord, 1)
-      return [{ terrain: neighbor.terrain, angle: Math.atan2(p.y - center.y, p.x - center.x) }]
-    })
-    return waterForHex(hex.terrain, neighbors)
-  }, [hex, mapState.hexes])
+  const water = useMemo(() => waterForMapHex(hex, mapState.hexes), [hex, mapState.hexes])
   const plan = useMemo(
     () =>
       computeSettlementPlan({

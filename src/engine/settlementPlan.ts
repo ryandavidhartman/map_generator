@@ -20,6 +20,7 @@ import { seededRngFromNumber } from './caveRenderShapes'
 import { seedForString } from './towerPlan'
 import type { DistrictType, SettlementType } from '../data/settlementTables'
 import type { Terrain } from '../data/tables'
+import { axialToPixel, hexId, neighborsOf, type AxialCoord } from '../hexgrid/hexMath'
 
 export type Pt = { x: number; y: number }
 
@@ -182,6 +183,22 @@ export function waterForHex(terrain: Terrain, neighbors: { terrain: Terrain; ang
     return river.length > 0 ? { kind: 'river', angle: river[0] } : { kind: 'river' }
   }
   return null
+}
+
+// Feeds waterForHex from the overland map: the hex's own terrain plus each revealed neighbor
+// with its direction from this hex (radians, y down — the same frame as the settlement plan, so a
+// neighbor to the screen's north-east puts the sea on the town map's north-east). Unrevealed
+// neighbors don't count. Neighbors are visited in neighborsOf order, which decides which
+// River/coast neighbor a river heads toward when there are several.
+export function waterForMapHex(hex: AxialCoord & { terrain: Terrain }, hexes: Record<string, { terrain: Terrain }>): SettlementWaterInput | null {
+  const center = axialToPixel(hex, 1)
+  const neighbors = neighborsOf(hex).flatMap((coord) => {
+    const neighbor = hexes[hexId(coord)]
+    if (!neighbor) return []
+    const p = axialToPixel(coord, 1)
+    return [{ terrain: neighbor.terrain, angle: Math.atan2(p.y - center.y, p.x - center.x) }]
+  })
+  return waterForHex(hex.terrain, neighbors)
 }
 
 // --- small geometry helpers -------------------------------------------------------------

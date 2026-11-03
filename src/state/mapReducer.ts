@@ -37,6 +37,14 @@ export const EMPTY_MAP_STATE: MapState = {
   selectedHexId: null,
 }
 
+// Merges a loaded save over EMPTY_MAP_STATE rather than using it directly — a save from before a
+// top-level MapState field existed would otherwise come back `undefined` at runtime despite the
+// type saying otherwise. Per-hex fields (e.g. Hex.dangerLevel) aren't covered by this merge; a
+// field that's present but needs content needs an explicit backfill here.
+export function withMapStateDefaults(loaded: Partial<MapState> | null): MapState {
+  return loaded ? { ...EMPTY_MAP_STATE, ...loaded } : EMPTY_MAP_STATE
+}
+
 export type HexEditPatch = Partial<Pick<Hex, 'terrain' | 'danger' | 'dangerLevel' | 'poi'>>
 
 // New hexes' Danger Level is neighbor-relative, not an independent roll: base = the rounded

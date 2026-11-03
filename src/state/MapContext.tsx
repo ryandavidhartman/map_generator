@@ -1,17 +1,13 @@
 import { createContext, useContext, useEffect, useReducer, type Dispatch, type ReactNode } from 'react'
-import { EMPTY_MAP_STATE, mapReducer, type MapAction, type MapState } from './mapReducer'
+import { mapReducer, withMapStateDefaults, type MapAction, type MapState } from './mapReducer'
 import { loadMapState, saveMapState } from '../persistence/localStorage'
 
 const MapStateContext = createContext<MapState | null>(null)
 const MapDispatchContext = createContext<Dispatch<MapAction> | null>(null)
 
 function initMapState(): MapState {
-  const loaded = loadMapState()
-  // Merge over EMPTY_MAP_STATE rather than using `loaded` directly — a save from before a
-  // top-level MapState field existed would otherwise come back `undefined` at runtime despite
-  // the type saying otherwise. (Per-hex fields, e.g. Hex.dangerLevel, aren't covered by this
-  // merge — see mapReducer.ts's Hex type comment.)
-  return loaded ? { ...EMPTY_MAP_STATE, ...loaded } : EMPTY_MAP_STATE
+  // See withMapStateDefaults for why a loaded save is merged over the empty state.
+  return withMapStateDefaults(loadMapState())
 }
 
 // `initialState`/`persist` let a caller run an isolated, throwaway reducer instance instead of the

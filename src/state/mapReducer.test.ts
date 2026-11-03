@@ -243,3 +243,45 @@ describe('mapReducer', () => {
   })
 
 })
+
+describe('mapReducer — revisits, selection and unknown actions', () => {
+  function twoHexMap(): MapState {
+    let state: MapState = mapReducer(EMPTY_MAP_STATE, { type: 'START_MAP', terrain: 'Grassland', rng: fixedRng(0.99) })
+    state = mapReducer(state, { type: 'MOVE_PARTY_TO', hexId: '1,0', rng: fixedRng(0.99) })
+    return state
+  }
+
+  it('MOVE_PARTY_TO into an already-revealed hex just relocates the party, rolling nothing', () => {
+    const before = twoHexMap()
+    const rng = () => {
+      throw new Error('a revisit must not roll')
+    }
+    const after = mapReducer(before, { type: 'MOVE_PARTY_TO', hexId: '0,0', rng })
+    expect(after.partyHexId).toBe('0,0')
+    expect(after.selectedHexId).toBe('0,0')
+    expect(after.hexes).toBe(before.hexes)
+  })
+
+  it('MOVE_PARTY_TO does nothing before a map is started', () => {
+    expect(mapReducer(EMPTY_MAP_STATE, { type: 'MOVE_PARTY_TO', hexId: '1,0' })).toBe(EMPTY_MAP_STATE)
+  })
+
+  it('SELECT_HEX selects a revealed hex without moving the party', () => {
+    const before = twoHexMap()
+    const after = mapReducer(before, { type: 'SELECT_HEX', hexId: '0,0' })
+    expect(after.selectedHexId).toBe('0,0')
+    expect(after.partyHexId).toBe('1,0')
+    expect(after.hexes).toBe(before.hexes)
+  })
+
+  it('SELECT_HEX ignores an unrevealed hex', () => {
+    const before = twoHexMap()
+    expect(mapReducer(before, { type: 'SELECT_HEX', hexId: '5,5' })).toBe(before)
+  })
+
+  it('returns the same state for an unknown action', () => {
+    const before = twoHexMap()
+    // Simulates an action from an older/newer build reaching the reducer.
+    expect(mapReducer(before, { type: 'NOT_A_REAL_ACTION' } as unknown as Parameters<typeof mapReducer>[1])).toBe(before)
+  })
+})
