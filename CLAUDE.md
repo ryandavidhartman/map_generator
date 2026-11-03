@@ -69,21 +69,16 @@ user's own data.
      visit. Replaces the `it.todo` in `settlementWater.test.ts`.
    - **Terrains:** Ocean, Coast (renamed from River/coast), Swamp, Grassland, Forest/jungle,
      Desert/arctic (kept as one), Hills (new) and Mountain.
-     - Hills content:
-       - The OSR source compilation already has Hills rows; copy them into the encounter
-         frequency table, the terrain category table and the wilderness monster table
-         (`encounterFrequencyTables.ts`, `wildernessMonsterLevelTables.ts`).
-       - A d100 Hills encounter table, written as original text: approved by the user
-         2026-11-02, saved in `docs/original-text-encounters.md` ("Hills" section).
-       - A map color: `#a39a5c` (olive-tan), approved by the user 2026-11-02.
-       - Cataclysm and Natural landmark rows (approved by the user 2026-11-02):
-         - Cataclysm d8: (1) Landslide buried a hillside village; (2) Wildfire stripped the
-           slopes bare; (3) Earthquake split a ridge in two; (4) Collapsed mine shafts left the
-           hills hollow and unstable; (5) Flash floods carved deep gullies through the
-           farmland; (6) Bones of a battle still lie on a scarred hilltop; (7) Plague emptied
-           the shepherds' hamlets; (8) A curse turned the green slopes to barren rock.
-         - Natural landmark: A great barrow-shaped hill crowned by a ring of ancient oaks, with
-           a cave mouth on its eastern slope.
+     - Hills content is all in the code already, exported but not yet wired up (Hills isn't
+       in the `Terrain` type until this item is built). Wire each into its `Record<Terrain>`:
+       - OSR wilderness rows, transcribed verbatim: `HILLS_ENCOUNTER_CHANCE` and
+         `HILLS_CATEGORY_TABLE` (`encounterFrequencyTables.ts`), and `HILLS`
+         (`wildernessMonsterLevelTables.ts`).
+       - The d100 encounter table, original text approved by the user: `HILLS`
+         (`encounterTables.ts`).
+       - Cataclysm and Natural landmark rows, approved by the user: `HILLS_CATACLYSMS` and
+         `HILLS_NATURAL_LANDMARK` (`locationTables.ts`).
+       - The map color, approved by the user: `HILLS_COLOR` (`hexgrid/colors.ts`).
    - **Approach: a seeded world formula decides sea vs. land.** Each campaign gets a random
      seed. A noise formula, given the seed and a hex's position, says whether that spot is sea
      or land. Nothing is generated up front: the formula is only asked about hexes as they're

@@ -217,6 +217,22 @@ const CATACLYSM_BY_TERRAIN: Record<Terrain, string[]> = {
   ],
 }
 
+// Hills (added 2026-11-02 for punch-list item 1, which adds a Hills terrain): the user's
+// approved Cataclysm d8 rows and Natural landmark. Exported but not yet used; they move into
+// CATACLYSM_BY_TERRAIN / NATURAL_LANDMARK_BY_TERRAIN when Hills is added to the Terrain type.
+export const HILLS_CATACLYSMS: string[] = [
+  'Landslide buried a hillside village',
+  'Wildfire stripped the slopes bare',
+  'Earthquake split a ridge in two',
+  'Collapsed mine shafts left the hills hollow and unstable',
+  'Flash floods carved deep gullies through the farmland',
+  'Bones of a battle still lie on a scarred hilltop',
+  "Plague emptied the shepherds' hamlets",
+  'A curse turned the green slopes to barren rock',
+]
+export const HILLS_NATURAL_LANDMARK =
+  'A great barrow-shaped hill crowned by a ring of ancient oaks, with a cave mouth on its eastern slope'
+
 export function cataclysmForTerrain(terrain: Terrain, roll: number): string {
   if (roll < 1 || roll > 8) {
     throw new Error(`cataclysmForTerrain: roll out of range: ${roll}`)

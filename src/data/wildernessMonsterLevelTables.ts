@@ -13,7 +13,7 @@
 // Mountain->Mountains, Desert/arctic->Desert. Swamp->Wetlands has NO dedicated name table in the
 // source ("Wetlands has no further breakdown table in the source material — treat it as a Rural
 // or Marine encounter, DM's choice") — Marine is reused here rather than transcribing the
-// (otherwise-unneeded) Rural table just for this one fallback. Arctic/Graveyard/Hills/Lost
+// (otherwise-unneeded) Rural table just for this one fallback. Arctic/Graveyard/Lost
 // World/Rural/Tundra (and Lost World's own dinosaur sub-tables) are correspondingly NOT
 // transcribed — nothing in this project's Terrain type reaches them, same "closest match" scope
 // already established by encounterFrequencyTables.ts's own category-table subset.
@@ -122,6 +122,24 @@ const PLAINS: TerrainMonsterTable = {
 // rolls down each terrain table's column — a low-Danger hex only ever reaches the earlier, tamer
 // rows (the book's own ordering, weakest to strongest); a Danger Level 7+ hex is "exposed to the
 // full table, rare and legendary entries included."
+// Hills (added 2026-11-02 for punch-list item 1, which adds a Hills terrain). Transcribed
+// verbatim from the same source section's "Hills" tables. Exported but not yet used: it gets
+// wired into TERRAIN_MONSTER_TABLES when the Hills terrain is added to the Terrain type.
+export const HILLS: TerrainMonsterTable = {
+  Airborne: ['Flightless Bird', 'Flightless Bird', 'Flightless Bird', 'Flightless Bird', 'Flightless Bird', 'Eagle, Giant', 'Chimera', 'Cockatrice', 'Griffon', 'Harpy', 'Harpy', 'Harpy', 'Nightmare', 'Pegasus', 'Pixie', 'Shedu', 'Stirge', 'Stirge', 'Stirge', 'Wyvern'],
+  Animal: ['Cat, Great', 'Cat, Great', 'Dog', 'Dog', 'Horse', 'Rat', 'Rat', 'Rat', 'Rat', 'Rat', 'Snake, Pit Viper', 'Snake, Pit Viper', 'Snake, Rock Python', 'Snake, Spitting Cobra', 'Snake, Giant Rattler', 'Wolf', 'Wolf', 'Wolf', 'Wolf', 'Wolverine'],
+  Dragon: ['Dragon, Black', 'Dragon, Bronze', 'Dragon, Bronze', 'Dragon, Bronze', 'Dragon, Bronze', 'Dragon, Gold', 'Dragon, Green', 'Dragon, Green', 'Dragon, Green', 'Dragon, Red', 'Dragon, Red', 'Dragon, Red', 'Dragon, Red', 'Dragon, Red', 'Dragon, Red', 'Dragon, Red', 'Dragon, Red', 'Dragon, Red', 'Dragon, Red', 'Dragon, Silver'],
+  Giant: ['Ettin', 'Ettin', 'Ettin', 'Ettin', 'Giant, Hill', 'Giant, Hill', 'Giant, Hill', 'Giant, Hill', 'Giant, Hill', 'Giant, Hill', 'Giant, Hill', 'Ogre', 'Ogre', 'Ogre', 'Ogre', 'Ogre', 'Ogre Mage', 'Ogre Mage', 'Titan', 'Titan'],
+  'Human/Demi-Human': ['Elf', 'Halfling', 'Halfling', 'Halfling', 'Halfling', 'Halfling', 'Hamlet', 'Men, Bandit', 'Men, Bandit', 'Men, Bandit', 'Men, Brigand', 'Men, Merchant', 'Men, Merchant', 'Men, Merchant', 'Stronghold', 'Men, Merchant', 'Wereboar', 'Wererat', 'Werewolf', 'Werewolf'],
+  Humanoid: ['Bugbear', 'Bugbear', 'Bugbear', 'Bugbear', 'Troglodyte', 'Troglodyte', 'Hobgoblin', 'Hobgoblin', 'Hobgoblin', 'Kobold', 'Kobold', 'Orc', 'Orc', 'Troll', 'Troll', 'Troll', 'Troll', 'Troll', 'Troll', 'Troll'],
+  Monster: ['Basilisk', 'Lizards, Giant', 'Blink Dog', 'Cat, Great', 'Phase Panther', 'Basilisk', 'Leprechaun', 'Leprechaun', 'Lizard Man', 'Lizard Man', 'Medusa', 'Minotaur', 'Naga', 'Owl Bear', 'Owl Bear', 'Pseudo-Dragon', 'Rust Monster', 'Treant', 'Unicorn', 'Wolf'],
+  NPC: ['Decoys', 'Decoys', 'Decoys', 'Escapees', 'Escapees', 'Escapees', 'Escapees', 'Escapees', 'Joiners', 'Joiners', 'Joiners', 'Joiners', 'Runners', 'Runners', 'Runners', 'Searchers', 'Searchers', 'Survivors', 'Wolf', 'Wolf'],
+  Undead: ['Groaning Spirit', 'Ghast', 'Ghost', 'Ghoul', 'Ghoul', 'Ghoul', 'Lich', 'Shadow', 'Shadow', 'Skeleton', 'Skeleton', 'Skeleton', 'Skeleton', 'Spectre', 'Vampire', 'Vampire', 'Wraith', 'Zombie', 'Zombie', 'Zombie'],
+  Invertebrates: ['Ant, Giant', 'Ant, Giant', 'Ant, Giant', 'Ant, Giant', 'Ant, Giant', 'Ant, Giant', 'Beetle, Giant', 'Beetle, Giant', 'Beetle, Giant', 'Centipede, Giant', 'Centipede, Giant', 'Centipede, Giant', 'Fly, Robber', 'Fly, Robber', 'Scorpion, Giant', 'Spider, Giant', 'Spider, Giant', 'Spider, Giant', 'Spider, Giant', 'Wasp, Giant'],
+  Water: ['Crayfish, Giant', 'Crayfish, Giant', 'Crayfish, Giant', 'Crocodile', 'Crocodile', 'Crocodile', 'Crocodile', 'Eel', 'Fish, Giant', 'Fish, Giant', 'Sea Serpent (Lesser)', 'Frog, Giant', 'Frog, Giant', 'Nixies', 'Nixies', 'Spider, Giant', 'Spider, Giant', 'Toad, Giant', 'Toad, Giant', 'Toad, Giant'],
+  Special: ['Hellhound', 'Hellhound', 'Type II Demon (Hezrou)', 'Succubus', 'Bone Devil', 'Barbed Devil', 'Barbed Devil', 'Doppelganger', 'Elemental, Air', 'Elemental, Earth', 'Elemental, Fire', 'Elemental, Water', 'Djinni', 'Golem', 'Golem', 'Homunculus', 'Berserker', 'Goblin', 'Rakshasa', 'Xorn'],
+}
+
 export function wildernessEncounterLevelDie(hexDangerLevel: number): 8 | 14 | 20 {
   if (hexDangerLevel <= 3) return 8
   if (hexDangerLevel <= 6) return 14

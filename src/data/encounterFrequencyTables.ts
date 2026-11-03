@@ -29,6 +29,11 @@ const WILDERNESS_ENCOUNTER_CHANCE: Record<Terrain, number[]> = {
   Swamp: [5, 6],
 }
 
+// Hills (added 2026-11-02 for punch-list item 1, which adds a Hills terrain): the book's own
+// "Hills 5-6" row. Exported but not yet used; it moves into WILDERNESS_ENCOUNTER_CHANCE when the
+// Hills terrain is added to the Terrain type.
+export const HILLS_ENCOUNTER_CHANCE: number[] = [5, 6]
+
 export function wildernessEncounterChanceForTerrain(terrain: Terrain): number[] {
   return WILDERNESS_ENCOUNTER_CHANCE[terrain]
 }
@@ -96,7 +101,7 @@ function expandCategoryD100(entries: CategoryRangeEntry[]): WildernessEncounterC
 // Resolved by giving the first-listed column the disputed boundary and starting the next column
 // one after, the same "documented judgment call, not a silent guess" approach used for Table
 // 12's off-by-one row in treasureTables.ts.
-const TERRAIN_CATEGORY_ROWS: Record<'Plains' | 'Jungle' | 'Aquatic' | 'Marine' | 'Mountains' | 'Desert' | 'Wetlands', CategoryRangeEntry[]> = {
+const TERRAIN_CATEGORY_ROWS: Record<'Plains' | 'Jungle' | 'Aquatic' | 'Marine' | 'Mountains' | 'Desert' | 'Wetlands' | 'Hills', CategoryRangeEntry[]> = {
   Plains: [
     { min: 1, max: 19, category: 'Airborne' },
     { min: 20, max: 29, category: 'Animal' },
@@ -195,7 +200,26 @@ const TERRAIN_CATEGORY_ROWS: Record<'Plains' | 'Jungle' | 'Aquatic' | 'Marine' |
     { min: 81, max: 95, category: 'Water' },
     { min: 96, max: 100, category: 'Special' },
   ],
+  // Hills (added 2026-11-02 for punch-list item 1), verbatim from the source's Hills row. Not
+  // yet reached by any Terrain; exported via HILLS_CATEGORY_TABLE below until Hills exists.
+  Hills: [
+    { min: 1, max: 15, category: 'Airborne' },
+    { min: 16, max: 25, category: 'Animal' },
+    { min: 26, max: 30, category: 'Dragon' },
+    { min: 31, max: 40, category: 'Giant' },
+    { min: 41, max: 60, category: 'Human/Demi-Human' },
+    { min: 61, max: 75, category: 'Humanoid' },
+    { min: 76, max: 90, category: 'Monster' },
+    { min: 91, max: 92, category: 'NPC' },
+    { min: 93, max: 93, category: 'Undead' },
+    { min: 94, max: 98, category: 'Invertebrates' },
+    { min: 99, max: 99, category: 'Water' },
+    { min: 100, max: 100, category: 'Special' },
+  ],
 }
+
+// The Hills category d100, ready to become TERRAIN_CATEGORY_TABLES' Hills entry.
+export const HILLS_CATEGORY_TABLE: WildernessEncounterCategory[] = expandCategoryD100(TERRAIN_CATEGORY_ROWS.Hills)
 
 const TERRAIN_CATEGORY_TABLES: Record<Terrain, WildernessEncounterCategory[]> = {
   Grassland: expandCategoryD100(TERRAIN_CATEGORY_ROWS.Plains),
