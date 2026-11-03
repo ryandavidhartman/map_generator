@@ -183,27 +183,30 @@ user's own data.
      Ocean row included, for this one roll.
    - **Save-format impact:** the map gains a world seed; each hex gains river and lake data.
    - **All numbers are starting points,** to be tuned by simulation before anything ships.
-2. **Town-map water for rivers, lakes and coasts** — builds on item 1's river, lake and
+2a. **Town-map rivers that follow their real edges** — builds on item 1's river, lake and
    world-formula data. Today the town map's river is one straight band through the town, cut
-   out with convex half-plane clipping (`settlementPlan.ts`); bent and merging rivers mean
-   replacing that, not adjusting it.
+   out with convex half-plane clipping (`settlementPlan.ts`); bent rivers mean replacing that,
+   not adjusting it. This is the core rewrite that 2b builds on.
    - A layout change that keeps the current look, so no reference image; the user checks
      screenshots.
    - A town's river follows its hex's actual river edges, in one side and out the other.
+   - A river that starts or ends inside the hex runs from the town's middle out to its one
+     edge.
    - A coast faces the formula's sea (see item 1's isthmus fix).
+   - A Coast hex with no sea next to it (rare) draws no water.
+   - A town on an Ocean hex (the small-island case) is drawn as today: a coastal town facing
+     the sea, its side chosen by item 1's isthmus fix. A true island drawing can come later.
+2b. **Town-map water combinations** — builds on 2a: towns with more than one kind of water.
+   - A layout change that keeps the current look, so no reference image; the user checks
+     screenshots.
+   - Where a river meets the sea, draw the coast and the river together.
+   - Two rivers merging are drawn as two rivers joining.
    - A lake hex draws its town with a lakeshore on one side, reusing the coast drawing. The
      lakeshore goes opposite where a river flows in; with no inflowing river, its side is
      picked from the seed.
    - A river that ends in a lake on the same hex runs from its entry edge into the lakeshore.
    - A lake hex that's also next to the sea shows only the coast (the lake still shows on the
      overland map).
-   - A Coast hex with no sea next to it (rare) draws no water.
-   - A town on an Ocean hex (the small-island case) is drawn as today: a coastal town facing
-     the sea, its side chosen by item 1's isthmus fix. A true island drawing can come later.
-   - More than one kind of water on a hex: where a river meets the
-     sea, draw the coast and the river together; draw two rivers merging as two rivers
-     joining; a river that starts or ends inside the hex runs from the town's middle out to
-     its one edge.
 3. **Site map overhaul — Tower, Keep, Settlement, Camp done; Tombs/Ruins/Temples remain**
    (see the ⬜ entry below). Moved to the top 2026-10-31; the user judged the feature-site maps
    as needing a lot of improvement. Absorbs the old "classic-blue renderer rewrite for
