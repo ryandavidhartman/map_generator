@@ -12,7 +12,8 @@ partly stale. Design docs, each the single source of truth for its area:
 
 - `docs/plan-sites-settlements-mongo.md` — sites, settlements, encounters, Location Generator
   (its locked d200 Feature table is the source of truth for `locationTables.ts` — edit the doc
-  first if that data changes), Mongo backend plan, neighbor-weighted terrain sketch.
+  first if that data changes), Mongo backend plan. Its neighbor-weighted terrain sketch is
+  superseded by punch-list item 1.
 - `docs/plan-osr-integration.md` — OSR content integration (rounds 1-2 + fixes).
 - `docs/osr-appendix-cde-source.txt` — extracted OSR Appendix C/D/E source text.
 - `docs/original-text-encounters.md` — the 21 core d100 encounter tables (original text).
@@ -44,7 +45,155 @@ user's own data.
 
 **Core roadmap**
 
-1. **Site map overhaul — Tower, Keep, Settlement, Camp done; Tombs/Ruins/Temples remain**
+1. **Neighbor-weighted terrain**
+   - **Problem:** terrain doesn't hang together geographically. The clearest case is Ocean.
+     In 20 simulated campaigns of 300 revealed hexes each, 13.6% of hexes are Ocean, but they
+     form puddles averaging 3.4 hexes. 41% of ocean bodies are a single hex, and the largest
+     body on each map is only 7-24 hexes.
+   - **Cause:** a new hex's terrain is rolled only from the hex the party just left (the New
+     Hex 2d6 table in `generateHex.ts`). The hex's other revealed neighbors are never
+     consulted, so no terrain forms coherent regions.
+   - **Goals:**
+     - New-hex terrain is influenced by all of the hex's revealed neighbors.
+     - Every terrain type has its own rules for how it relates to its neighbors.
+     - Ocean, islands and coastlines get the most detailed rules:
+       - Oceans form large, contiguous bodies.
+       - Islands are possible.
+       - Coastlines read sensibly where land meets Ocean.
+   - **Isthmus coasts:** `waterForHex` averages the directions of a settlement's Ocean
+     neighbors. When Ocean sits on opposite sides, the directions cancel, and the town map's
+     coast can face land. Today 6% of land hexes next to the sea have Ocean on opposite sides.
+     With large oceans this should become rare. Fix: work out the coast direction from the
+     formula's sea on all six sides, revealed or not; if seas on opposite sides cancel out,
+     face the coast toward one real sea neighbor, picked from the seed so it's the same every
+     visit. Replaces the `it.todo` in `settlementWater.test.ts`.
+   - **Terrains:** Ocean, Coast (renamed from River/coast), Swamp, Grassland, Forest/jungle,
+     Desert/arctic (kept as one), Hills (new) and Mountain.
+     - Hills content:
+       - The OSR source compilation already has Hills rows; copy them into the encounter
+         frequency table, the terrain category table and the wilderness monster table
+         (`encounterFrequencyTables.ts`, `wildernessMonsterLevelTables.ts`).
+       - A d100 Hills encounter table, written as original text: approved by the user
+         2026-11-02, saved in `docs/original-text-encounters.md` ("Hills" section).
+       - A map color: `#a39a5c` (olive-tan), approved by the user 2026-11-02.
+       - Cataclysm and Natural landmark rows (approved by the user 2026-11-02):
+         - Cataclysm d8: (1) Landslide buried a hillside village; (2) Wildfire stripped the
+           slopes bare; (3) Earthquake split a ridge in two; (4) Collapsed mine shafts left the
+           hills hollow and unstable; (5) Flash floods carved deep gullies through the
+           farmland; (6) Bones of a battle still lie on a scarred hilltop; (7) Plague emptied
+           the shepherds' hamlets; (8) A curse turned the green slopes to barren rock.
+         - Natural landmark: A great barrow-shaped hill crowned by a ring of ancient oaks, with
+           a cave mouth on its eastern slope.
+   - **Approach: a seeded world formula decides sea vs. land.** Each campaign gets a random
+     seed. A noise formula, given the seed and a hex's position, says whether that spot is sea
+     or land. Nothing is generated up front: the formula is only asked about hexes as they're
+     revealed (and their neighbors), so the map stays unbounded, and the same hex always gets
+     the same answer whichever way the party approaches it. Local rules alone were tried in
+     simulation and can't produce large oceans when hexes are revealed one at a time.
+   - **How a new hex is generated:**
+     1. **Sea or land.** The formula decides. Sea → Ocean, and the remaining steps are skipped.
+     2. **Land terrain.** Each land terrain's base frequency is multiplied by the pair weight
+        for each revealed neighbor, and one terrain is picked in proportion to the results.
+        Ocean is never picked here. Pair weights are never 0. The only terrains ever left out
+        are those excluded by the "never uphill" river rule, and Coast and Swamp (elevation 1)
+        are always low enough, so some terrain is always available. A Coast hex not next to
+        the formula's sea gets an extra ×0.05.
+     3. **Coast conversion.** If the hex is next to the formula's sea (revealed or not), it
+        becomes Coast at its terrain's coast rate.
+     4. **River.** A river flowing in from a revealed neighbor's river edge continues into the
+        hex. Otherwise a land hex rolls the river chance.
+     5. **Lake.** A land hex rolls the lake chance.
+   - **Base frequencies (3d6)** for the land-terrain roll (the Ocean row is unused, since Ocean
+     comes only from the formula):
+
+     | 3d6 | Terrain | Chance |
+     |---|---|---|
+     | 3-4 | Desert/arctic | 1.9% |
+     | 5-6 | Swamp | 7.4% |
+     | 7-9 | Grassland | 28.2% |
+     | 10-11 | Forest/jungle | 25.0% |
+     | 12 | Hills | 11.6% |
+     | 13-14 | Coast | 16.7% |
+     | 15-16 | Ocean | 7.4% |
+     | 17-18 | Mountain | 1.9% |
+
+   - **Pair weights** (symmetric; elevations Ocean 0, Coast and Swamp 1, Grassland,
+     Forest/jungle and Desert/arctic 2, Hills 3, Mountain 4):
+
+     | | Ocean | Coast | Swamp | Grass | Forest | Desert | Hills | Mount. |
+     |---|---|---|---|---|---|---|---|---|
+     | **Ocean** | **20** | 6 | 1 | 1 | 1 | 1 | 0.5 | 0.3 |
+     | **Coast** | 6 | **3** | 2 | 2 | 2 | 1.5 | 1 | 0.5 |
+     | **Swamp** | 1 | 2 | **4** | 1.5 | 1.5 | 0.5 | 0.2 | 0.02 |
+     | **Grassland** | 1 | 2 | 1.5 | **4** | 2 | 1 | 2 | 0.2 |
+     | **Forest/jungle** | 1 | 2 | 1.5 | 2 | **4** | 1 | 2 | 0.3 |
+     | **Desert/arctic** | 1 | 1.5 | 0.5 | 1 | 1 | **4** | 1 | 0.2 |
+     | **Hills** | 0.5 | 1 | 0.2 | 2 | 2 | 1 | **3** | 3 |
+     | **Mountain** | 0.3 | 0.5 | 0.02 | 0.2 | 0.3 | 0.2 | 3 | **4** |
+
+   - **Coast rates** (the chance that land next to Ocean becomes Coast): Grassland 85%,
+     Forest/jungle 80%, Desert/arctic 75%, Hills 70%, Swamp 60%, Mountain 50%.
+   - **Rivers:** a feature, not a terrain.
+     - A hex with a river records the edges where it enters and leaves.
+     - Rivers can run through Grassland, Forest/jungle, Swamp, Hills, Mountain and Coast, and
+       rarely through Desert/arctic.
+     - About 17% of land hexes have a river, counting every hex a river flows through.
+     - **Start:** a land hex that rolls the river chance gets a spring and an exit edge.
+     - **Flow:** an exit edge always points downhill or level, never toward a higher neighbor
+       (elevations as in the pair-weights table).
+     - **Where the river goes next:**
+       - Into Ocean or Coast: the river ends at the sea.
+       - Into Swamp or a lake hex: the river ends there, or occasionally continues out the
+         other side.
+       - Into another river: the two merge, as a tributary.
+       - Anywhere else: the river continues, with a new downhill-or-level exit.
+     - **Rule: never uphill.** When a hex a river flows into is revealed, terrains higher than
+       the river's current elevation are excluded from its terrain roll.
+     - **Rule: revealed hexes don't change.** An exit can only point at an unrevealed hex, or
+       at a revealed hex that can take the water (Ocean, Coast, a lake, Swamp, or another
+       river). If no valid exit exists, the river ends in a new lake on its current hex.
+     - **What's saved:** each hex saves only where its river leaves (its exit edge, or none if
+       the river ends there). Where rivers come in is worked out when drawing, from the
+       neighbors' exits, so a river merging into a revealed hex never changes that hex.
+     - **Unexplored ends stay open.** A river flowing into unexplored land continues off into
+       the unknown until the party reveals more.
+   - **Lakes:** a feature on a land hex, about 5% of land hexes.
+   - **Scale:** set by the formula's continent size and sea level. The party usually explores
+     one big landmass with sea along some edges. Islands (small land in the formula's sea)
+     are possible but uncommon.
+   - **Sites on Ocean hexes:**
+     - Settlement, Tower, Keep, Camp, Shrine, Rift and Tomb sit on a small island inside the
+       Ocean hex.
+     - Ruins, Deep tunnels and Caves are underwater: sunken ruins, sea caves, and tunnels
+       below the seabed.
+     - For now this is text only (a line on the site page saying "on a small island" or
+       "underwater"). The site maps don't change.
+   - **Overland map drawing:** a river is a simple blue line from edge to edge, and a lake a
+     small blue oval. The user approved this simple placeholder on 2026-11-02 (no reference
+     image); a nicer style can come later from a reference image.
+   - **Town-map water:**
+     - A town's river follows its hex's actual river edges, in one side and out the other.
+     - A coast faces the formula's sea (see the isthmus fix above).
+     - A lake hex draws its town with a lakeshore on one side, reusing the coast drawing.
+     - A Coast hex with no sea next to it (rare) draws no water.
+   - **Leftover River/coast content:** Coast keeps the old River/coast Cataclysm and landmark
+     rows as they are (river mouths are on coasts). The encounter table's label "River and
+     Coast" becomes "Coast". River hexes on other terrains get no extra encounter table for now.
+   - **Old saves:** a save that still uses River/coast resets cleanly to a new map instead of
+     crashing. All saves are test data, so nothing is migrated.
+   - **Tuning targets:**
+     - Biggest landmass: at least 95% of the revealed land.
+     - Seas the party reaches: mostly 100 hexes or bigger.
+     - One-hex ponds: 5% or fewer.
+     - Rivers: about 17% of land hexes. Lakes: about 5% of land hexes.
+   - **Supersedes** the old neighbor-weighted terrain sketch in
+     `docs/plan-sites-settlements-mongo.md`.
+   - **Open questions:** none.
+   - **Starting hex:** the world is placed so the starting hex agrees with the chosen terrain
+     (sea for Ocean, land otherwise).
+   - **Save-format impact:** the map gains a world seed; each hex gains river and lake data.
+   - **All numbers are starting points,** to be tuned by simulation before anything ships.
+2. **Site map overhaul — Tower, Keep, Settlement, Camp done; Tombs/Ruins/Temples remain**
    (see the ⬜ entry below). Moved to the top 2026-10-31; the user judged the feature-site maps
    as needing a lot of improvement. Absorbs the old "classic-blue renderer rewrite for
    Settlement/Keep/Tower/Camp" item (Dungeon's classic-blue rewrite is done: blue-field /
@@ -85,7 +234,7 @@ user's own data.
    which has **no map** today) or `Ruins (temple)` (→ Ruins dungeon) — **user: both**
    (2026-11-01). So the Temple (oracle) Shrine needs a brand-new map, not just a restyle.
    Blocked on a reference image per kind; confirm style-only vs. layout too.
-2. **Site-interaction tracking** — next. A typed
+3. **Site-interaction tracking** — A typed
    per-site event log at room/feature level (monster defeated, treasure looted, NPC
    killed/recruited/talked to, door forced), not freeform notes, so a revisited site reflects
    what the party did there. Event-triggered by party interaction, not a GM "advance time"
@@ -95,13 +244,11 @@ user's own data.
    undo, and what Reroll Site does to an existing log. Kept ahead of Mongo deliberately: it
    changes the saved schema, and this project sequences schema changes before Mongo; the whole
    `MapState` is one JSON document, so moving it to Mongo later is cheap.
-3. **Mongo backend + multi-campaign persistence** — reuses the user's existing Atlas cluster
+4. **Mongo backend + multi-campaign persistence** — reuses the user's existing Atlas cluster
    with a new database (plan doc's "Reuse note"). Open questions: client/server TypeScript
    type sharing across two tsconfigs (unverified), and hosting / SPA route fallback (no deploy
    target chosen). Would jump the queue if multi-campaign/multi-device play is needed soon or
    localStorage (~5 MB) fills up.
-4. **Neighbor-weighted terrain** — new-hex terrain influenced by all revealed neighbors, Ocean
-   forming contiguous bodies.
 
 **Polish (can slot in anywhere)**
 
@@ -112,18 +259,13 @@ user's own data.
    referenced by its test. Reuse `EncounterRoller`.
 6. **Avoid duplicate room detail text within one dungeon** — reroll once on an exact match
    (book RAW allows duplicates; pure variety improvement).
-7. **Isthmus coasts — awaiting user decision (raised 2026-11-02).** `waterForHex` averages
-   the Ocean neighbors' directions; Ocean on opposite sides (or on every other side) cancels
-   out, so the coast's side comes from rounding noise and can face land. Options put to the
-   user: (a) fall back to one real Ocean neighbor, seeded; (b) draw sea on both sides (big
-   change); (c) leave it. Recommended (a). Pinned as an `it.todo` in `settlementWater.test.ts`.
-8. **Profession-aware NPC activity tier** — `npcTables.ts`'s 1d5 tier is independent of
+7. **Profession-aware NPC activity tier** — `npcTables.ts`'s 1d5 tier is independent of
    profession (e.g. "Dwarf Labourer — Infirm"). Only if it bothers the user in play.
 
-**Blocked on content from the user** (item 1 is also blocked on reference images)
+**Blocked on content from the user** (item 2 is also blocked on reference images)
 
-9. **Encounter tables for Tower/Shrine/Rift/Keep/Camp** — none exist yet.
-10. **Camp central-feature table** — currently a generic placeholder.
+8. **Encounter tables for Tower/Shrine/Rift/Keep/Camp** — none exist yet.
+9. **Camp central-feature table** — currently a generic placeholder.
 
 Deliberately not built: a turn-clock state machine; OSR's full procedural dungeon crawler; NPC
 adventuring parties; combat stat blocks (name/flavor only — real stats are a future Mongo
