@@ -164,15 +164,6 @@ user's own data.
        "underwater"). The site maps don't change.
    - **Overland map drawing:** a river is a simple blue line from edge to edge, and a lake a
      small blue oval.
-   - **Town-map water:**
-     - A town's river follows its hex's actual river edges, in one side and out the other.
-     - A coast faces the formula's sea (see the isthmus fix above).
-     - A lake hex draws its town with a lakeshore on one side, reusing the coast drawing.
-     - A Coast hex with no sea next to it (rare) draws no water.
-     - More than one kind of water on a hex: where a river meets the
-       sea, draw the coast and the river together; draw two rivers merging as two rivers
-       joining; a river that starts or ends inside the hex runs from the town's middle out to
-       its one edge.
    - **Edit Hex:** a hand edit keeps the hex's river and lake as
      they are, the river rules aren't enforced on edits, and the form gets no river or lake
      controls for now.
@@ -192,7 +183,21 @@ user's own data.
      Ocean row included, for this one roll.
    - **Save-format impact:** the map gains a world seed; each hex gains river and lake data.
    - **All numbers are starting points,** to be tuned by simulation before anything ships.
-2. **Site map overhaul — Tower, Keep, Settlement, Camp done; Tombs/Ruins/Temples remain**
+2. **Town-map water for rivers, lakes and coasts** — builds on item 1's river, lake and
+   world-formula data. Today the town map's river is one straight band through the town, cut
+   out with convex half-plane clipping (`settlementPlan.ts`); bent and merging rivers mean
+   replacing that, not adjusting it.
+   - A layout change that keeps the current look, so no reference image; the user checks
+     screenshots.
+   - A town's river follows its hex's actual river edges, in one side and out the other.
+   - A coast faces the formula's sea (see item 1's isthmus fix).
+   - A lake hex draws its town with a lakeshore on one side, reusing the coast drawing.
+   - A Coast hex with no sea next to it (rare) draws no water.
+   - More than one kind of water on a hex: where a river meets the
+     sea, draw the coast and the river together; draw two rivers merging as two rivers
+     joining; a river that starts or ends inside the hex runs from the town's middle out to
+     its one edge.
+3. **Site map overhaul — Tower, Keep, Settlement, Camp done; Tombs/Ruins/Temples remain**
    (see the ⬜ entry below). Moved to the top 2026-10-31; the user judged the feature-site maps
    as needing a lot of improvement. Absorbs the old "classic-blue renderer rewrite for
    Settlement/Keep/Tower/Camp" item (Dungeon's classic-blue rewrite is done: blue-field /
@@ -233,7 +238,7 @@ user's own data.
    which has **no map** today) or `Ruins (temple)` (→ Ruins dungeon) — **user: both**
    (2026-11-01). So the Temple (oracle) Shrine needs a brand-new map, not just a restyle.
    Blocked on a reference image per kind; confirm style-only vs. layout too.
-3. **Site-interaction tracking** — A typed
+4. **Site-interaction tracking** — A typed
    per-site event log at room/feature level (monster defeated, treasure looted, NPC
    killed/recruited/talked to, door forced), not freeform notes, so a revisited site reflects
    what the party did there. Event-triggered by party interaction, not a GM "advance time"
@@ -243,7 +248,7 @@ user's own data.
    undo, and what Reroll Site does to an existing log. Kept ahead of Mongo deliberately: it
    changes the saved schema, and this project sequences schema changes before Mongo; the whole
    `MapState` is one JSON document, so moving it to Mongo later is cheap.
-4. **Mongo backend + multi-campaign persistence** — reuses the user's existing Atlas cluster
+5. **Mongo backend + multi-campaign persistence** — reuses the user's existing Atlas cluster
    with a new database (plan doc's "Reuse note"). Open questions: client/server TypeScript
    type sharing across two tsconfigs (unverified), and hosting / SPA route fallback (no deploy
    target chosen). Would jump the queue if multi-campaign/multi-device play is needed soon or
@@ -251,20 +256,20 @@ user's own data.
 
 **Polish (can slot in anywhere)**
 
-5. **Encounter rollers for dungeon sites + the Tavern table** — the Cave/Deep
+6. **Encounter rollers for dungeon sites + the Tavern table** — the Cave/Deep
    Tunnels/Ruins d100 tables and the Tavern d100 table exist but are reachable from no UI.
    `DungeonSiteView` has no encounter roller at all; `SITE_TYPE_TO_ENCOUNTER_KEY`
    (`encounterTables.ts`, Tomb → Ruins since the book has no Tomb table) exists but is only
    referenced by its test. Reuse `EncounterRoller`.
-6. **Avoid duplicate room detail text within one dungeon** — reroll once on an exact match
+7. **Avoid duplicate room detail text within one dungeon** — reroll once on an exact match
    (book RAW allows duplicates; pure variety improvement).
-7. **Profession-aware NPC activity tier** — `npcTables.ts`'s 1d5 tier is independent of
+8. **Profession-aware NPC activity tier** — `npcTables.ts`'s 1d5 tier is independent of
    profession (e.g. "Dwarf Labourer — Infirm"). Only if it bothers the user in play.
 
-**Blocked on content from the user** (item 2 is also blocked on reference images)
+**Blocked on content from the user** (item 3 is also blocked on reference images)
 
-8. **Encounter tables for Tower/Shrine/Rift/Keep/Camp** — none exist yet.
-9. **Camp central-feature table** — currently a generic placeholder.
+9. **Encounter tables for Tower/Shrine/Rift/Keep/Camp** — none exist yet.
+10. **Camp central-feature table** — currently a generic placeholder.
 
 Deliberately not built: a turn-clock state machine; OSR's full procedural dungeon crawler; NPC
 adventuring parties; combat stat blocks (name/flavor only — real stats are a future Mongo
@@ -470,7 +475,7 @@ Views live in `components/hexdetail/*SiteView.tsx` (plus `WildernessView`), sele
   wandering monster gated by the terrain's 1d6 frequency check) and per district in
   `SettlementView` (District table, or OSR Daytime/Nighttime urban tables gated by
   `hexDangerLevel`). One mutually-exclusive source dropdown; every result adds an Encounter
-  Purpose d8 line. Not mounted on any other site kind (see punch-list item 5).
+  Purpose d8 line. Not mounted on any other site kind (see punch-list item 6).
 - `DressingRoller` (5 OSR sensory tables) and `TrickRoller` — in Dungeon, Tower and Keep views.
 - Tavern/Shop generators — per district in `SettlementView`.
 
