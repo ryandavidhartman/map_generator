@@ -166,7 +166,10 @@ user's own data.
      small blue oval.
    - **Edit Hex:** a hand edit keeps the hex's river and lake as
      they are, the river rules aren't enforced on edits, and the form gets no river or lake
-     controls for now.
+     controls for now. Town maps count a revealed Ocean hex as sea as well as the formula's
+     sea, so a hex hand-edited to Ocean still gives a neighboring town a coast.
+   - **`/poi/:n` review page:** gets a fresh world seed each time Reroll POI is pressed, so it
+     shows varied coast and river cases.
    - **Leftover River/coast content:** Coast keeps the old River/coast Cataclysm and landmark
      rows as they are (river mouths are on coasts). The encounter table's label "River and
      Coast" becomes "Coast". River hexes on other terrains get no extra encounter table for now.
@@ -192,7 +195,8 @@ user's own data.
    - A town's river follows its hex's actual river edges, in one side and out the other.
    - A river that starts or ends inside the hex runs from the town's middle out to its one
      edge.
-   - A coast faces the formula's sea (see item 1's isthmus fix).
+   - A coast faces the sea: the formula's sea plus any revealed Ocean hex (see item 1's
+     isthmus fix and Edit Hex rule).
    - A Coast hex with no sea next to it (rare) draws no water.
    - A town on an Ocean hex (the small-island case) is drawn as today: a coastal town facing
      the sea, its side chosen by item 1's isthmus fix. A true island drawing can come later.
