@@ -185,7 +185,9 @@ const CATACLYSM_BY_TERRAIN: Record<Terrain, string[]> = {
     'Blight or fungal rot spread tree to tree',
     'Wild magic twisted the flora and fauna',
   ],
-  'River/coast': [
+  // Coast (the old River/coast, renamed by punch-list item 1a) keeps its rows as they are: river
+  // mouths are on coasts.
+  Coast: [
     'Ashfall poisoned the water, killed the fish',
     'Burning swept a coastal town or delta reeds',
     'Quake rerouted the river or sank the coastline',
@@ -215,23 +217,18 @@ const CATACLYSM_BY_TERRAIN: Record<Terrain, string[]> = {
     'Plague spread through isolated mining communities',
     'Ritual awoke something in the depths, cursed the stone',
   ],
+  // Hills (added 2026-11-02 for punch-list item 1a, wired 2026-11-03): the user's approved rows.
+  Hills: [
+    'Landslide buried a hillside village',
+    'Wildfire stripped the slopes bare',
+    'Earthquake split a ridge in two',
+    'Collapsed mine shafts left the hills hollow and unstable',
+    'Flash floods carved deep gullies through the farmland',
+    'Bones of a battle still lie on a scarred hilltop',
+    "Plague emptied the shepherds' hamlets",
+    'A curse turned the green slopes to barren rock',
+  ],
 }
-
-// Hills (added 2026-11-02 for punch-list item 1a, which adds a Hills terrain): the user's
-// approved Cataclysm d8 rows and Natural landmark. Exported but not yet used; they move into
-// CATACLYSM_BY_TERRAIN / NATURAL_LANDMARK_BY_TERRAIN when Hills is added to the Terrain type.
-export const HILLS_CATACLYSMS: string[] = [
-  'Landslide buried a hillside village',
-  'Wildfire stripped the slopes bare',
-  'Earthquake split a ridge in two',
-  'Collapsed mine shafts left the hills hollow and unstable',
-  'Flash floods carved deep gullies through the farmland',
-  'Bones of a battle still lie on a scarred hilltop',
-  "Plague emptied the shepherds' hamlets",
-  'A curse turned the green slopes to barren rock',
-]
-export const HILLS_NATURAL_LANDMARK =
-  'A great barrow-shaped hill crowned by a ring of ancient oaks, with a cave mouth on its eastern slope'
 
 export function cataclysmForTerrain(terrain: Terrain, roll: number): string {
   if (roll < 1 || roll > 8) {
@@ -246,8 +243,9 @@ const NATURAL_LANDMARK_BY_TERRAIN: Record<Terrain, string> = {
   Swamp: 'Massive, hollowed-out cypress tree wide enough to serve as shelter, rising from the mire',
   Grassland: 'Lone standing stone circle, weathered and half-sunken into the earth',
   'Forest/jungle': 'Colossal "mother tree," centuries old, roots forming natural tunnels and archways',
-  'River/coast': 'Natural rock arch or sea cave carved by centuries of tidal erosion',
+  Coast: 'Natural rock arch or sea cave carved by centuries of tidal erosion',
   Ocean: 'Ring of jagged sea stacks marking a sunken reef or old wreck',
+  Hills: 'A great barrow-shaped hill crowned by a ring of ancient oaks, with a cave mouth on its eastern slope',
   Mountain: 'Natural amphitheater or crater lake in a dormant volcanic caldera',
 }
 

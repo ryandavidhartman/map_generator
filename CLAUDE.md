@@ -30,10 +30,11 @@ committed.
 
 ## Status and roadmap
 
-Done: overland hex crawl (unbounded map), 7 site kinds (dungeons in 4 types) with dedicated
-views and maps (Shrine/Rift have no map), dungeon + settlement monster/NPC population, OSR
-tables (treasure, traps, dressing, tricks, castles, equipment prices, civic amenities,
-OSR dungeon monsters for room contents, wilderness + urban encounter rollers).
+Done: overland hex crawl (unbounded map) with neighbor-weighted terrain, a seeded world formula
+for sea vs. land, rivers and lakes (punch-list item 1a, 2026-11-03), 7 site kinds (dungeons in 4
+types) with dedicated views and maps (Shrine/Rift have no map), dungeon + settlement monster/NPC
+population, OSR tables (treasure, traps, dressing, tricks, castles, equipment prices, civic
+amenities, OSR dungeon monsters for room contents, wilderness + urban encounter rollers).
 
 The faction system (and the propagation-rules plan built on it) was removed entirely on
 2026-10-31 at the user's request — don't reintroduce factions without a fresh explicit ask.
@@ -45,161 +46,99 @@ user's own data.
 
 **Core roadmap**
 
-1a. **Neighbor-weighted terrain**
-   - **Problem:** terrain doesn't hang together geographically. The clearest case is Ocean.
-     In 20 simulated campaigns of 300 revealed hexes each, 13.6% of hexes are Ocean, but they
-     form puddles averaging 3.4 hexes. 41% of ocean bodies are a single hex, and the largest
-     body on each map is only 7-24 hexes.
-   - **Cause:** a new hex's terrain is rolled only from the hex the party just left (the New
-     Hex 2d6 table in `generateHex.ts`). The hex's other revealed neighbors are never
-     consulted, so no terrain forms coherent regions.
-   - **Goals:**
-     - New-hex terrain is influenced by all of the hex's revealed neighbors.
-     - Every terrain type has its own rules for how it relates to its neighbors.
-     - Ocean, islands and coastlines get the most detailed rules:
-       - Oceans form large, contiguous bodies.
-       - Islands are possible.
-       - Coastlines read sensibly where land meets Ocean.
-   - **Isthmus coasts:** `waterForHex` averages the directions of a settlement's Ocean
-     neighbors. When Ocean sits on opposite sides, the directions cancel, and the town map's
-     coast can face land. Today 6% of land hexes next to the sea have Ocean on opposite sides.
-     With large oceans this should become rare. Fix: work out the coast direction from the
-     formula's sea on all six sides, revealed or not; if seas on opposite sides cancel out,
-     face the coast toward one real sea neighbor, picked from the seed so it's the same every
-     visit. Replaces the `it.todo` in `settlementWater.test.ts`.
-   - **Terrains:** Ocean, Coast (renamed from River/coast), Swamp, Grassland, Forest/jungle,
-     Desert/arctic (kept as one), Hills (new) and Mountain.
-     - Hills content is all in the code already, exported but not yet wired up (Hills isn't
-       in the `Terrain` type until this item is built). Wire each into its `Record<Terrain>`:
-       - OSR wilderness rows, transcribed verbatim: `HILLS_ENCOUNTER_CHANCE` and
-         `HILLS_CATEGORY_TABLE` (`encounterFrequencyTables.ts`), and `HILLS`
-         (`wildernessMonsterLevelTables.ts`).
-       - The d100 encounter table, original text: `HILLS`
-         (`encounterTables.ts`).
-       - Cataclysm and Natural landmark rows: `HILLS_CATACLYSMS` and
-         `HILLS_NATURAL_LANDMARK` (`locationTables.ts`).
-       - The map color: `HILLS_COLOR` (`hexgrid/colors.ts`).
-   - **Approach: a seeded world formula decides sea vs. land.** Each campaign gets a random
-     seed. A noise formula, given the seed and a hex's position, says whether that spot is sea
-     or land. Nothing is generated up front: the formula is only asked about hexes as they're
-     revealed (and their neighbors), so the map stays unbounded, and the same hex always gets
-     the same answer whichever way the party approaches it.
-   - **How a new hex is generated:**
-     1. **Sea or land.** The formula decides. Sea → Ocean, and the remaining steps are skipped.
-     2. **Land terrain.** Each land terrain's base frequency is multiplied by the pair weight
-        for each revealed neighbor, and one terrain is picked in proportion to the results.
-        Ocean is never picked here. Pair weights are never 0. The only terrains ever left out
-        are those excluded by the "never uphill" river rule, and Coast and Swamp (elevation 1)
-        are always low enough, so some terrain is always available. A Coast hex not next to
-        the formula's sea gets an extra ×0.05.
-     3. **Coast conversion.** If the hex is next to the formula's sea (revealed or not), it
-        becomes Coast at its terrain's coast rate.
-     4. **River.** A river flowing in from a revealed neighbor's river edge continues into the
-        hex. Otherwise a land hex rolls the river chance.
-     5. **Lake.** A land hex rolls the lake chance.
-   - **Base frequencies (3d6)** for the land-terrain roll (the Ocean row is unused, since Ocean
-     comes only from the formula):
-
-     | 3d6 | Terrain | Chance |
-     |---|---|---|
-     | 3-4 | Desert/arctic | 1.9% |
-     | 5-6 | Swamp | 7.4% |
-     | 7-9 | Grassland | 28.2% |
-     | 10-11 | Forest/jungle | 25.0% |
-     | 12 | Hills | 11.6% |
-     | 13-14 | Coast | 16.7% |
-     | 15-16 | Ocean | 7.4% |
-     | 17-18 | Mountain | 1.9% |
-
-   - **Pair weights** (symmetric; elevations Ocean 0, Coast and Swamp 1, Grassland,
-     Forest/jungle and Desert/arctic 2, Hills 3, Mountain 4):
-
-     | | Ocean | Coast | Swamp | Grass | Forest | Desert | Hills | Mount. |
-     |---|---|---|---|---|---|---|---|---|
-     | **Ocean** | **20** | 6 | 1 | 1 | 1 | 1 | 0.5 | 0.3 |
-     | **Coast** | 6 | **3** | 2 | 2 | 2 | 1.5 | 1 | 0.5 |
-     | **Swamp** | 1 | 2 | **4** | 1.5 | 1.5 | 0.5 | 0.2 | 0.02 |
-     | **Grassland** | 1 | 2 | 1.5 | **4** | 2 | 1 | 2 | 0.2 |
-     | **Forest/jungle** | 1 | 2 | 1.5 | 2 | **4** | 1 | 2 | 0.3 |
-     | **Desert/arctic** | 1 | 1.5 | 0.5 | 1 | 1 | **4** | 1 | 0.2 |
-     | **Hills** | 0.5 | 1 | 0.2 | 2 | 2 | 1 | **3** | 3 |
-     | **Mountain** | 0.3 | 0.5 | 0.02 | 0.2 | 0.3 | 0.2 | 3 | **4** |
-
-   - **Coast rates** (the chance that land next to Ocean becomes Coast): Grassland 85%,
-     Forest/jungle 80%, Desert/arctic 75%, Hills 70%, Swamp 60%, Mountain 50%.
-   - **Rivers:** a feature, not a terrain.
-     - A hex with a river records the edges where it enters and leaves.
-     - Rivers can run through Grassland, Forest/jungle, Swamp, Hills, Mountain and Coast, and
-       rarely through Desert/arctic.
-     - About 17% of land hexes have a river, counting every hex a river flows through.
-     - **Start:** a land hex that rolls the river chance gets a spring and an exit edge.
-     - **Flow:** an exit edge always points downhill or level, never toward a higher neighbor
-       (elevations as in the pair-weights table).
-     - **Where the river goes next:**
-       - Into Ocean or Coast: the river ends at the sea.
-       - Into Swamp or a lake hex: the river ends there, or occasionally continues out the
-         other side.
-       - Into another river: the two merge, as a tributary.
-       - Anywhere else: the river continues, with a new downhill-or-level exit.
-     - **Rule: never uphill.** When a hex a river flows into is revealed, terrains higher than
-       the river's current elevation are excluded from its terrain roll.
-     - **Rule: revealed hexes don't change.** An exit can only point at an unrevealed hex, or
-       at a revealed hex that can take the water (Ocean, Coast, a lake, Swamp, or another
-       river). If no valid exit exists, the river ends in a new lake on its current hex.
-     - **What's saved:** each hex saves only where its river leaves (its exit edge, or none if
-       the river ends there). Where rivers come in is worked out when drawing, from the
-       neighbors' exits, so a river merging into a revealed hex never changes that hex.
-     - **Unexplored ends stay open.** A river flowing into unexplored land continues off into
-       the unknown until the party reveals more.
-   - **Lakes:** a feature on a land hex, about 5% of land hexes.
-   - **Scale:** set by the formula's continent size and sea level. The party usually explores
-     one big landmass with sea along some edges. Islands (small land in the formula's sea)
-     are possible but uncommon.
-   - **Sites on Ocean hexes:**
-     - Settlement, Tower, Keep, Camp, Shrine, Rift and Tomb sit on a small island inside the
-       Ocean hex.
-     - Ruins, Deep tunnels and Caves are underwater: sunken ruins, sea caves, and tunnels
-       below the seabed.
-     - For now this is text only (a line on the site page saying "on a small island" or
-       "underwater"). The site maps don't change.
-   - **Overland map drawing:** a river is a simple blue line from edge to edge, and a lake a
-     small blue oval.
-   - **Edit Hex:** a hand edit keeps the hex's river and lake as
-     they are, the river rules aren't enforced on edits, and the form gets no river or lake
-     controls for now. Town maps count a revealed Ocean hex as sea as well as the formula's
-     sea, so a hex hand-edited to Ocean still gives a neighboring town a coast.
-   - **`/poi/:n` review page:** gets a fresh world seed each time Reroll POI is pressed, so it
-     shows varied coast and river cases.
-   - **Leftover River/coast content:** Coast keeps the old River/coast Cataclysm and landmark
-     rows as they are (river mouths are on coasts). The encounter table's label "River and
-     Coast" becomes "Coast". River hexes on other terrains get no extra encounter table for now.
-   - **Old saves:** a save that still uses River/coast resets cleanly to a new map instead of
-     crashing. All saves are test data, so nothing is migrated.
-   - **Tuning targets:**
-     - Biggest landmass: at least 95% of the revealed land.
-     - Seas the party reaches: mostly 100 hexes or bigger.
-     - One-hex ponds: 5% or fewer.
-     - Rivers: about 17% of land hexes. Lakes: about 5% of land hexes.
-   - **Open questions:** none.
-   - **Starting hex:** the world is placed so the starting hex agrees with the chosen terrain
-     (sea for Ocean, land otherwise). The start dialog's Random button rolls the new 3d6 table,
-     Ocean row included, for this one roll.
-   - **Save-format impact:** the map gains a world seed; each hex gains river and lake data.
-   - **All numbers are starting points,** to be tuned by simulation before anything ships.
-1b. **Town-map rivers that follow their real edges** — builds on 1a's river, lake and
-   world-formula data. Today the town map's river is one straight band through the town, cut
-   out with convex half-plane clipping (`settlementPlan.ts`); bent rivers mean replacing that,
-   not adjusting it. This is the core rewrite that 1c builds on.
-   - A layout change that keeps the current look, so no reference image; the user checks
-     screenshots.
-   - A town's river follows its hex's actual river edges, in one side and out the other.
-   - A river that starts or ends inside the hex runs from the town's middle out to its one
-     edge.
-   - A coast faces the sea: the formula's sea plus any revealed Ocean hex (see 1a's
-     isthmus fix and Edit Hex rule).
-   - A Coast hex with no sea next to it (rare) draws no water.
-   - A town on an Ocean hex (the small-island case) is drawn as today: a coastal town facing
-     the sea, its side chosen by 1a's isthmus fix. A true island drawing can come later.
+1a. ✅ **Neighbor-weighted terrain — done 2026-11-03, browser-verified; follow-up patch the
+   same day.** The problem was that a new hex's terrain was rolled only from the hex the party
+   just left (the old New Hex 2d6 table), so nothing formed coherent regions: Ocean came in
+   puddles averaging 3.4 hexes. Now a seeded world formula decides sea vs. land, land terrain
+   is rolled from every revealed neighbor, and rivers and lakes are hex features. The rules,
+   tables and numbers are in the Architecture section's "Overland" notes (the source of truth
+   for `data/terrainTables.ts` and `engine/worldFormula.ts`). Summary:
+   - Terrains: Ocean, **Coast** (renamed from River/coast), Swamp, Grassland, Forest/jungle,
+     Desert/arctic, **Hills** (new; its encounter, monster, cataclysm and landmark rows and its
+     map color were wired in), Mountain. The encounter table key "River and Coast" is now
+     "Coast"; Coast keeps the old River/coast Cataclysm and landmark rows.
+   - `MapState.worldSeed` (picked at `START_MAP` so the starting hex agrees with the chosen
+     terrain); `Hex.river` (exit edge only) and `Hex.lake`. Inflows are derived from the
+     neighbors' exits for **every** revealed hex, so a Swamp, lake, Coast or Ocean hex revealed
+     before a river reached it draws, reports and (town map) uses the inflow although it has no
+     river record (follow-up fix; the first cut only looked at hexes with a record).
+   - Isthmus fix in `waterForHex`: the sea on all six sides (formula or revealed Ocean); sides
+     that cancel out face one real sea side picked from the seed. Replaced the `it.todo`.
+   - Sites on Ocean hexes get a text line ("On a small island…" / "Underwater: …"), maps unchanged.
+   - Old saves (no world seed, or River/coast hexes) reset cleanly to the start screen.
+   - Start dialog rolls the 3d6 table (Ocean row included); `/poi/:n` gets a fresh world seed
+     per reroll; Edit Hex keeps river/lake untouched (no controls yet).
+   - **Beyond the spec's five steps** (this project's additions, all in `generateHex.ts` /
+     `worldFormula.ts`): the river exit bias (×3 straight on, ×2 for a 60° bend, ×1 for 120°,
+     ×3 toward the sea); non-Coast land starts never touch the sea (**kept for now, user
+     decision 2026-11-03** — revisit if starts feel too inland); a revealed Ocean neighbor
+     counts as sea for coast conversion and the inland-Coast factor, not just the formula's
+     sea; the lake is rolled before the river; and a 25% chance that a river continues through
+     a Swamp or lake hex — an **untuned judgment call**. Only the river spring chances, the lake
+     chance and the noise gain were swept by simulation.
+   - **User decisions 2026-11-03:** leave the spring chances, lake chance (4.5%), continue-through
+     chance (25%) and noise gain (0.42 — 0.38 eliminated islands, 0.45 left small inland seas)
+     as they are; fix Mountain/Desert scarcity by **raising their pair weights**, base table
+     untouched (the revised weights and the reasoning are in the Overland notes and in
+     `terrainTables.ts`'s comment).
+   - **Simulation figures** (`engine/worldSimulation.test.ts`, 20 campaigns × 300 hexes, a
+     land-biased walk that turns back at the sea 9 times in 10; three seed sets on
+     2026-11-03 after the follow-up fixes): Grassland ~42%, Forest ~35%, Hills ~9%, Swamp
+     ~3.5–4%, Coast ~2–3.5%, Ocean ~3.5%, **Desert/arctic ~1.9–2.5%, Mountain ~1.7%** of
+     revealed hexes; rivers 18–18.5% of land; lakes 4.9%; the party meets the sea in **9–11 of
+     20 campaigns** (it fell from 13 when the origin stopped being pinned at mid elevation —
+     land starts are now genuinely inland); the seas reached, measured within the explored
+     box, ran **24 to 2105 hexes** (one of 36 below 100 in one set, two in another: 69, 81) —
+     the test requires 75% of them ≥ 100; one-hex ponds are **impossible by construction**
+     (the formula fills them in; the test pins that rule, it isn't a tuning result); isthmus
+     coasts ≤ 2% of shoreline hexes in any campaign. **Landmass:** the "100% in every
+     campaign" figure counts revealed land bridged through unrevealed formula land inside the
+     explored box (a party that walked around a bay has seen one continent); counting revealed
+     land alone, one campaign in the third seed set came out at 81% (earlier runs saw 93% and
+     61%) — the walk crossed water and revealed land on the far side.
+   - Deliberately not done yet (1b/1c): town-map rivers following real edges, water
+     combinations. For 1a the town map's river is one straight band along the river's exit
+     edge (or its entry edge when the river ends on the hex).
+1b. ✅ **Town-map rivers that follow their real edges — done 2026-11-04, browser-verified.**
+   A town's river now runs along its hex's real river edges instead of one straight band.
+   Code: `engine/riverCourse.ts` (pure course geometry), `settlementPlan.ts` (river shape,
+   per-cell cutting, welding, bridges, wall gaps), `SettlementMapSvg.tsx` (stroked arms),
+   `SettlementView.tsx` (label). Tests: `riverCourse.test.ts`, `settlementRiver.test.ts`,
+   `settlementPlanBaseline.test.ts` (pre-1b pins), plus river cases in the render suite.
+   - **User decisions (2026-11-04):** **A1** — every through river passes through the town:
+     cubic from the entry midpoint to the exit midpoint with both control points at the town
+     centre (a 60° pair makes a tight U-bend inside the town, curve radius ≈ 0.17 R; the
+     "natural corner arc" that skirts the town was rejected). Opposite-edge pairs keep the
+     seeded ±0.15 R `riverOffset` — applied by moving the shared control point so the curve's
+     middle sits at the offset while its ends stay on the midpoints (a gentle S, not a shifted
+     line). **B** — the half-plane clipping is replaced by per-cell local cuts plus a welding
+     pass (each cell the band touches is cut once per bank and stays convex; cut points are
+     inserted into neighbouring cells so the street graph has no T-junctions; a sliver of land
+     is lost at bends instead of slicing cells at every sampled point). **C** — the river is
+     drawn as constant-width round-capped strokes (edge-colour pass, then water pass); the old
+     ±8% width wobble is gone.
+   - **Hex/square convention:** the town map is a square of half-size `extent`; the river's
+     notional flat-top hex has apothem `extent`, centred on the town, edge midpoints at
+     `directionAngle(d)` (0 SE, 1 NE, 2 N, 3 NW, 4 SW, 5 S). N/S midpoints sit on the map's
+     border, the diagonal ones inside it; beyond the hex each arm continues radially off the
+     map. A meander (own derived rng) is zero inside the town and at the midpoints.
+   - **Kept rng draw:** `computeSettlementPlan` draws from its main rng in the pre-1b order
+     (coast angle only for an undirected coast, then `seaCut`, then `riverOffset`), so
+     coast-only, no-water and Ocean-island towns are byte-identical to before — pinned by
+     289 hashes captured from the unmodified code (`settlementPlanBaseline.test.ts`).
+   - Springs run centre → exit midpoint; ending rivers (Coast, Swamp, lake, dead end, and a hex
+     with no river record that only receives an inflow) entry midpoint → centre. Bridges:
+     through rivers 1 (Village/Town) or 2 (City/Metropolis), springs/ending 1, one set per arm,
+     each trying a few spots along the arm (a U-bend's inside can have nothing to land on).
+   - **1c handoff — what the degenerate inputs do today (not designed, only kept from crashing):**
+     several entries → one arm per entry to the exit (or the centre), overlapping near the
+     exit, one bridge per arm — the town can split into more regions than the bridges join, so
+     seat reachability is only promised for single-arm rivers; exit null + no entries (a spring
+     that dead-ended into a lake on its own hex) → a spring toward a seed-picked edge (1c draws
+     a lakeshore); entry = exit (unreachable from the generator) → the entry is dropped and a
+     spring is drawn. A river meeting the sea still yields a coast only (sea beats river in
+     `waterForHex`). The spring's source is a plain round end (no pool); a river's outer
+     road can still run under the water outside the wall, as before.
 1c. **Town-map water combinations** — builds on 1b: towns with more than one kind of water.
    - A layout change that keeps the current look, so no reference image; the user checks
      screenshots.
@@ -240,9 +179,9 @@ user's own data.
    `docs/plan-settlement-map-overhaul.md`. Unlike Tower/Keep it's a **color** map (user's
    choice). **User rule for water: it must make sense for the hex the settlement is in** —
    implemented as `settlementPlan.ts`'s `waterForHex`, fed from the overland map by
-   `waterForMapHex` (rules table in the plan doc and in `settlementWater.test.ts`'s header): coast
-   toward Ocean neighbors (or a random side for an Ocean hex with none revealed), a river for a
-   River/coast hex with no Ocean neighbor, otherwise nothing.
+   `waterForMapHex` (rules table in `settlementWater.test.ts`'s header, revised by punch-list
+   item 1a): coast toward the sea around the hex (the world formula's plus revealed Ocean), a
+   river for a hex with a river and no sea, otherwise nothing.
    ✅ **Camp — done 2026-10-31, browser-verified.** Color, painted forest-clearing style;
    reference and decisions in `docs/plan-camp-map-overhaul.md`. Drawing-only: generateCamp.ts
    and its stored positions are untouched.
@@ -335,7 +274,8 @@ feature); map export; undo.
 source ~/.nvm/nvm.sh && nvm use   # Node 20.16.0
 npm install
 npm run dev        # http://localhost:5173
-npm run test       # Vitest (1012 tests + 1 todo in 46 files as of 2026-11-02)
+npm run test       # Vitest (1466 tests in 55 files as of 2026-11-06; ~20 s — the settlementRiver*.test.ts files sweep hundreds of towns, split so they run in parallel)
+VITE_WORLD_SIM_LOG=1 npx vitest run src/engine/worldSimulation.test.ts   # print the terrain-tuning table
 npm run build      # tsc -b && vite build
 npx tsc -b         # typecheck only
 ```
@@ -353,12 +293,15 @@ an injectable `Rng` (`engine/dice.ts`), so generators are seed-testable.
 - `/hex/:hexId` — full view of one hex (`HexDetailPage` → `HexSiteContent`).
 - `/poi/:n` (n = 1-200) — GM review tool: force-generates Feature-table row *n* in a throwaway,
   non-persisting `MapProvider`. Has terrain + danger-level selectors, Reroll POI, Prev/Next.
+  Each reroll places a fresh world seed and picks a river case for the hex (none, spring,
+  through, ending — `routes/poiReviewRiver.ts`; an inflow is a revealed neighbor whose exit
+  points in).
   The fastest way to browser-check any site kind (e.g. `/poi/25` = Tomb, `/poi/88` = Ruins,
   `/poi/14`-`19` = Keep, `/poi/150` = Village, `/poi/200` = Metropolis).
 
 ### State (`state/`)
 
-- `mapReducer.ts` — `MapState = { hexes, partyHexId, selectedHexId }`. Actions:
+- `mapReducer.ts` — `MapState = { hexes, partyHexId, selectedHexId, worldSeed }`. Actions:
   `START_MAP`, `MOVE_PARTY_TO`, `SELECT_HEX`, `REROLL_HEX`, `EDIT_HEX`, `GENERATE_SITE`,
   `REROLL_SITE`, `NEW_MAP`.
   - `Hex` has qualitative `danger` (book roll) plus numeric **`dangerLevel`** (house rule:
@@ -366,27 +309,94 @@ an injectable `Rng` (`engine/dice.ts`), so generators are seed-testable.
     floor 1; the starting hex is 1 — `computeHexDangerLevel`). This replaced the old
     campaign-wide `partyLevel`. It drives wilderness/urban encounter gating and, via
     `dungeonTables.ts`'s `effectiveDungeonLevel`, dungeon-shaped site contents.
+  - `worldSeed` seeds the world formula (`engine/worldFormula.ts`); `START_MAP` picks it with
+    `pickWorldSeedForStart` so the origin is sea for an Ocean start, land next to the sea for a
+    Coast start, and land away from the sea otherwise.
+  - `Hex.river = { exit: HexDirection | null }` (only where the river leaves; entries are derived
+    by `engine/rivers.ts`'s `riverEntriesFor` from the neighbors' exits) and `Hex.lake?: true`.
+    `REROLL_HEX` and `EDIT_HEX` leave both untouched.
   - `MOVE_PARTY_TO` only succeeds into a hex adjacent to the party (no map bound). New hexes
-    roll fresh; revealed ones just relocate the party.
+    roll fresh via `generateNextHexDetails` with `neighborInfoFor` (each revealed neighbor's
+    direction, terrain, river, lake, and whether its river already drains into this hex);
+    revealed ones just relocate the party.
   - `GENERATE_SITE` is idempotent; `REROLL_SITE` regenerates unconditionally. `REROLL_HEX` and
     `EDIT_HEX` (when touching `poi`) clear the now-stale `site`.
 - `MapContext.tsx` — context + `useReducer`; lazy-inits from localStorage with the merge
-  described in "Working rules". Optional `initialState`/`persist` props let
+  described in "Working rules". `withMapStateDefaults` also resets a started save that has no
+  `worldSeed` or uses a terrain name that no longer exists (pre-1a saves) to the empty state. Optional `initialState`/`persist` props let
   `/poi/:n` run an isolated reducer.
 - `persistence/localStorage.ts` — single save under `osr-hex-crawl:map`; fails silently.
 
-### Overland (`data/tables.ts`, `data/locationTables.ts`, `engine/generateHex.ts`)
+### Overland (`data/tables.ts`, `data/terrainTables.ts`, `data/locationTables.ts`, `engine/worldFormula.ts`, `engine/generateHex.ts`, `engine/rivers.ts`)
 
-- `tables.ts`: terrain order + circular stepping, Hex Terrain 2d6, New Hex 2d6, Danger d6,
-  Settlement Name d20 × 3 columns (City and Metropolis share a name pool via
-  `settlementNameColumnFor`), and `SETTLEMENT_LOCATIONS` (legacy dispatch for manually-edited
-  POIs).
+- `tables.ts`: the `Terrain` type and display order (`TERRAIN_ORDER`, `isTerrain`), Hex Terrain
+  3d6 (`terrainFor3d6` — only the start dialog's Random button rolls it), Danger d6, Settlement
+  Name d20 × 3 columns (City and Metropolis share a name pool via `settlementNameColumnFor`),
+  and `SETTLEMENT_LOCATIONS` (legacy dispatch for manually-edited POIs).
+- `terrainTables.ts`: the numbers of punch-list item 1a (user's tables verbatim, plus this
+  project's tuned river/lake chances):
+  - **Base frequencies** of the land roll = the 3d6 rows in 216ths (Desert/arctic 4, Swamp 16,
+    Grassland 61, Forest/jungle 54, Hills 25, Coast 36, Mountain 4; Ocean's 16 unused).
+  - **Elevations**: Ocean 0; Coast, Swamp 1; Grassland, Forest/jungle, Desert/arctic 2; Hills 3;
+    Mountain 4.
+  - **Pair weights** (symmetric, never 0). The user's table, revised 2026-11-03 for
+    Mountain and Desert/arctic (bold-italic cells; the originals were Mountain×Grassland 0.2,
+    ×Forest 0.3, ×Hills 3, ×Mountain 4; Desert×Grassland 1, ×Forest 1, ×Desert 4):
+
+    | | Ocean | Coast | Swamp | Grass | Forest | Desert | Hills | Mount. |
+    |---|---|---|---|---|---|---|---|---|
+    | **Ocean** | **20** | 6 | 1 | 1 | 1 | 1 | 0.5 | 0.3 |
+    | **Coast** | 6 | **3** | 2 | 2 | 2 | 1.5 | 1 | 0.5 |
+    | **Swamp** | 1 | 2 | **4** | 1.5 | 1.5 | 0.5 | 0.2 | 0.02 |
+    | **Grassland** | 1 | 2 | 1.5 | **4** | 2 | ***3*** | 2 | ***1*** |
+    | **Forest/jungle** | 1 | 2 | 1.5 | 2 | **4** | ***3*** | 2 | ***1*** |
+    | **Desert/arctic** | 1 | 1.5 | 0.5 | ***3*** | ***3*** | ***6*** | 1 | 0.2 |
+    | **Hills** | 0.5 | 1 | 0.2 | 2 | 2 | 1 | **3** | ***8*** |
+    | **Mountain** | 0.3 | 0.5 | 0.02 | ***1*** | ***1*** | 0.2 | ***8*** | ***10*** |
+
+  - **Inland Coast factor** 0.05; **coast rates** Grassland 85%, Forest/jungle 80%,
+    Desert/arctic 75%, Hills 70%, Swamp 60%, Mountain 50%.
+  - **River spring chance** (swept by simulation): Grassland/Forest/Swamp 10%, Hills 17%,
+    Mountain 28%, Desert/arctic 1.7%, Coast 0. A river flowing into a Swamp or lake hex
+    continues 25% of the time (an untuned judgment call). **Lake chance** 4.5% (swept; plus
+    rivers that dead-end).
+- `worldFormula.ts`: `isSeaAt(worldSeed, coord)` — domain-warped fBm gradient noise over the
+  hex's pixel position (continent wavelength 150 units, sea level −0.08, 4 octaves, gain 0.42,
+  swept: gain 0.38 killed islands, 0.45 left small inland seas), sampled at a per-seed offset
+  so the origin isn't a lattice corner (which pinned every start at mid elevation — a land
+  start was never far from the sea; fixed 2026-11-03), with two pure local touch-ups (a one-hex
+  pond becomes land, a one-hex speck becomes sea — so one-hex ponds can't occur). Raw answers
+  are memoized (bounded cache). `isNextToSea`; `pickWorldSeedForStart(terrain, rng, tries)` —
+  the rng gives a starting seed and the search walks consecutive seeds (so a constant stub rng
+  still works) and **throws** if `tries` seeds all fail rather than starting on a world that
+  contradicts the start hex.
+- `generateHex.ts`: `generateNextHexDetails({ worldSeed, coord, neighbors, forcedTerrain? })`:
+  The spec's five steps, plus this project's additions marked (+):
+  1. **Sea or land** from the formula (`forcedTerrain` = the starting hex, taken as-is). Sea →
+     Ocean, no river/lake. (+) A non-Coast land start is placed with no sea next to it.
+  2. **Land terrain** (`rollLandTerrain`): base × Π pair weight per revealed neighbor, Coast
+     × 0.05 unless next to the sea (the formula's, or (+) a revealed Ocean neighbor), terrains
+     higher than the lowest inflowing river's elevation excluded (never uphill; Coast and Swamp
+     always pass).
+  3. **Coast conversion** next to the sea (same definition) at the coast rate.
+  4. (+) **Lake** roll, done before the river because a lake decides whether an inflow ends here.
+  5. **River**: an inflow (a revealed neighbor's exit pointing here) continues; otherwise the
+     spring chance. Ends here on Coast, and on Swamp or a lake hex (inflows only) except for
+     (+) a 25% continue-through chance. Else `pickRiverExit`: never an entry edge; a revealed
+     neighbor only if it can take water (Ocean, Coast, Swamp, lake, river), is no higher, and
+     doesn't already drain back here (`riverDrainsTo` — no loops); (+) weighted toward straight
+     on (×3 straight / ×2 for a 60° bend / ×1 for 120°) and the sea (×3). No valid edge → a new
+     lake here, exit null.
+  Then danger and `rollPointOfInterest` (1-in-6 gate, then d200, reusing the hex's own terrain)
+  / `pointOfInterestForFeatureRoll` (no gate — used by `/poi/:n`).
+- `rivers.ts`: `riverEntriesFor` (for every hex, record or not) and `riverDrainsTo` — shared by
+  generation, `HexTile`, `HexBaseInfo` and the settlement water rules.
+- `dice.ts`'s `pickWeighted` is the one weighted-table helper (terrain roll, river exit,
+  settlement shape/pattern odds).
 - `locationTables.ts`: house-rule **Location Generator** — d200 Feature table
   (`locationFeatureForD200`) plus terrain-keyed Cataclysm and Natural Landmark tables. Each row
   yields a `siteKind` (or `'none'` for cataclysm/landmark flavor) and optional `forcedType`
   (e.g. a Metropolis POI forces the Settlement Type roll).
-- `generateHex.ts`: `rollPointOfInterest` (1-in-6 gate, then d200, reusing the hex's own
-  terrain) and `pointOfInterestForFeatureRoll` (no gate — used by `/poi/:n`).
 - `engine/generateSite.ts`: `generateSiteForHex` switches on `poi.siteKind` and passes
   `forcedType` through. `siteKind === undefined` falls back to the `SETTLEMENT_LOCATIONS`
   heuristic; `'none'` → no site (and `HexSiteContent` never dispatches `GENERATE_SITE`).
@@ -437,10 +447,17 @@ Views live in `components/hexdetail/*SiteView.tsx` (plus `WildernessView`), sele
   street-facing lots (polygon subdivision), interior scraps become yards; gardens, temples and
   roof palettes by district type; a towered wall with gates for Town+, while villages are
   unwalled houses along their roads with fields between. Water (`waterForHex`, fed by
-  `SettlementView` from the hex's terrain and its revealed neighbors' directions): a coast cuts
-  the outline on the sea side (no wall there, gates on the land side, a harbor road and
-  piers); a river splits blocks along its banks, with bridges the main roads use and water
-  gaps in the wall. Suburbs (Town+): houses along the roads out of some gates (Town 1-2, City
+  `SettlementView` through `waterForMapHex` from the hex's terrain and river, the world
+  formula's sea on each of its six sides plus any revealed Ocean neighbor, and the world seed —
+  rules table in `settlementWater.test.ts`'s header): a coast cuts the outline on the sea side
+  (no wall there, gates on the land side, a harbor road and piers), facing the average of the
+  sea sides, or one real sea side picked from the seed when they cancel (isthmus / sea all
+  around); a river follows the hex's real edges (punch-list 1b: `engine/riverCourse.ts` —
+  entry midpoint → exit midpoint as a cubic through the town, or centre ↔ edge for a spring
+  or an ending river, on a notional flat-top hex whose apothem is the map's half-size), blocks
+  are cut around the band cell by cell and welded back into a consistent street graph, with
+  bridges the main roads use and water gaps in the wall wherever the band crosses it; a Coast
+  hex with no sea and no river gets no water. Suburbs (Town+): houses along the roads out of some gates (Town 1-2, City
   2-3, Metropolis all), thinning with distance, kept off the water and clear of fields. Each
   district POI is
   `{text, npc}` with `npc` from `npcTables.ts` (OSR Appendix C Urban: race, profession, noble
@@ -502,7 +519,13 @@ Engine: `rollEncounter.ts` (`rollEncounter`, `checkWildernessEncounterFrequency`
 unrevealed neighbors; no map size). `HexGridSvg.tsx` — hand-rolled pan/zoom via viewBox; the
 initial fit is computed once at mount (lazy `useState`) and deliberately not recomputed as the
 frontier grows, so reveals don't yank the camera. `HexTile.tsx` — fill = terrain, stroke =
-danger; **single click moves the party (250 ms debounce), double click opens `/hex/:id`**.
+danger, a river as a blue line from each entry edge (from `riverEntriesFor`, passed in by the
+grid for every revealed hex) to the exit edge (or the center when it ends here — including a
+hex with no river record that only receives an inflow; a spring runs center → exit), a lake as
+a small blue oval; **single click moves the party (250 ms debounce), double click opens
+`/hex/:id`**. Directions: `hexMath.ts`'s six `HexDirection`s are 0 south-east, 1 north-east,
+2 north, 3 north-west, 4 south-west, 5 south (flat-top: no neighbor due east) — persisted in
+`Hex.river.exit`, so never reorder them.
 
 ### Site renderer notes
 
@@ -514,9 +537,10 @@ danger; **single click moves the party (250 ms debounce), double click opens `/h
   an exact edge, so any drawn gap is artificial. Room markers are small circles colored by room
   type with the room number; the objective gets a star "statue" icon.
 - `SettlementMapSvg.tsx` — color painted-map style. Draw order: countryside fields → roads out
-  of the gates → trees → town ground (street color) → blocks/lots → district borders → district
-  click regions → wall/towers/gates → markers. Streets aren't drawn; they're the ground showing
-  between blocks (villages draw their main roads explicitly instead).
+  of the gates → trees → town ground (street color) → water (a river's arms as round-capped
+  strokes, all edge strokes then all water strokes) → blocks/lots → district borders → district
+  click regions → bridges/piers → wall/towers/gates → markers. Streets aren't drawn; they're the
+  ground showing between blocks (villages draw their main roads explicitly instead).
 
 ## Don't reintroduce (all passed typecheck and build)
 
@@ -541,13 +565,16 @@ Feature row × 2 seeds, the overland map, every route) and fails on crashes, Rea
 effects, layout or looks. Typecheck and tests aren't enough for UI work — drive a real browser. Playwright isn't a
 project dependency: install `playwright` in a scratch dir (one existed at
 `/tmp/pw-scratch/node_modules/playwright` as of 2026-11-02 — `/tmp` may be wiped), run
-`npx playwright install chromium` if the cached browser doesn't match, and launch with
-`chromium.launch({ args: ['--no-sandbox'] })` from a plain Node 20 script against
-`npm run dev`.
+`npx playwright install chromium` if the cached browser doesn't match (if downloads are blocked,
+a cached build may exist under `/opt/pw-browsers/chromium-*/chrome-linux64/chrome` — pass it as
+`executablePath`), and launch with `chromium.launch({ args: ['--no-sandbox'] })` from a plain
+Node 20 script against `npm run dev`.
 
 - Hexes carry `data-hex-id="q,r"` on their `<g>` — click the `<g>`, not the `<polygon>` (POI
   markers cover the center). Wait ~300 ms after `.click()` (debounce); use `.dblclick()` to open
-  details.
+  details. Hexes under the legend overlay can't be clicked by Playwright — use
+  `page.dispatchEvent(selector, 'click')` for a scripted walk. The camera fits once at mount, so
+  reload the page to see the whole revealed map. River lines carry `data-river`, lakes `data-lake`.
 - Site maps carry `data-room-id`, `data-district-id` or `data-feature-id`.
 - Use `/poi/:n` to reach any site kind directly, or seed
   `localStorage['osr-hex-crawl:map']` for map-state scenarios.

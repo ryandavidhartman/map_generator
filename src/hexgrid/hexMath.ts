@@ -15,8 +15,15 @@ export function parseHexId(id: string): AxialCoord {
   return { q, r }
 }
 
-// Flat-top axial neighbor directions, ordered starting east and going
-// counter-clockwise.
+// The six neighbor directions of a flat-top hex, indexed 0-5 counter-clockwise on screen (y
+// down): 0 = south-east, 1 = north-east, 2 = north, 3 = north-west, 4 = south-west, 5 = south.
+// (In a flat-top layout the hex's corners point east and west, so no neighbor lies due east.)
+// Persisted river data (Hex.river.exit) stores one of these indexes, so the order is part of
+// the save format — don't reorder.
+export type HexDirection = 0 | 1 | 2 | 3 | 4 | 5
+
+export const HEX_DIRECTIONS: HexDirection[] = [0, 1, 2, 3, 4, 5]
+
 const NEIGHBOR_OFFSETS: AxialCoord[] = [
   { q: 1, r: 0 },
   { q: 1, r: -1 },
@@ -26,8 +33,35 @@ const NEIGHBOR_OFFSETS: AxialCoord[] = [
   { q: 0, r: 1 },
 ]
 
+export const DIRECTION_NAMES: Record<HexDirection, string> = {
+  0: 'south-east',
+  1: 'north-east',
+  2: 'north',
+  3: 'north-west',
+  4: 'south-west',
+  5: 'south',
+}
+
 export function neighborsOf(coord: AxialCoord): AxialCoord[] {
   return NEIGHBOR_OFFSETS.map((offset) => ({ q: coord.q + offset.q, r: coord.r + offset.r }))
+}
+
+export function neighborInDirection(coord: AxialCoord, direction: HexDirection): AxialCoord {
+  const offset = NEIGHBOR_OFFSETS[direction]
+  return { q: coord.q + offset.q, r: coord.r + offset.r }
+}
+
+// The direction you'd travel from the neighbor back into this hex.
+export function oppositeDirection(direction: HexDirection): HexDirection {
+  return ((direction + 3) % 6) as HexDirection
+}
+
+// Screen angle (radians, y down) from a hex's center toward the neighbor in this direction —
+// the same frame the settlement plan uses for its sea/river direction.
+export function directionAngle(direction: HexDirection): number {
+  const offset = NEIGHBOR_OFFSETS[direction]
+  const p = axialToPixel(offset, 1)
+  return Math.atan2(p.y, p.x)
 }
 
 export function axialDistance(a: AxialCoord, b: AxialCoord): number {
@@ -41,6 +75,14 @@ export function axialToPixel(coord: AxialCoord, size: number): PixelPoint {
   const x = size * (1.5 * coord.q)
   const y = size * ((Math.sqrt(3) / 2) * coord.q + Math.sqrt(3) * coord.r)
   return { x, y }
+}
+
+// Midpoint of the edge a hex shares with its neighbor in `direction` — halfway between the two
+// centers.
+export function edgeMidpoint(center: PixelPoint, size: number, direction: HexDirection): PixelPoint {
+  const offset = NEIGHBOR_OFFSETS[direction]
+  const neighbor = axialToPixel(offset, size)
+  return { x: center.x + neighbor.x / 2, y: center.y + neighbor.y / 2 }
 }
 
 export function hexCorners(center: PixelPoint, size: number): PixelPoint[] {

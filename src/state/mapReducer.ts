@@ -1,14 +1,10 @@
 import type { Rng } from '../engine/dice'
-import {
-  generateNextHexDetails,
-  generateStartingHexDetails,
-  rollDangerLevel,
-  rollPointOfInterest,
-  type PointOfInterest,
-} from '../engine/generateHex'
+import { generateNextHexDetails, rollDangerLevel, rollPointOfInterest, type NeighborInfo, type PointOfInterest } from '../engine/generateHex'
 import { generateSiteForHex, type GeneratedSite } from '../engine/generateSite'
-import { dangerLevelDelta, type DangerLevel, type Terrain } from '../data/tables'
-import { hexId, neighborsOf, parseHexId, type AxialCoord } from '../hexgrid/hexMath'
+import { riverDrainsTo, type RiverData } from '../engine/rivers'
+import { pickWorldSeedForStart } from '../engine/worldFormula'
+import { dangerLevelDelta, isTerrain, type DangerLevel, type Terrain } from '../data/tables'
+import { HEX_DIRECTIONS, hexId, neighborInDirection, neighborsOf, parseHexId, type AxialCoord } from '../hexgrid/hexMath'
 
 export type Hex = {
   id: string
@@ -23,26 +19,68 @@ export type Hex = {
   dangerLevel: number
   poi?: PointOfInterest
   site?: GeneratedSite
+  // Punch-list item 1a: a river is a feature of the hex, saved only as the edge it leaves through
+  // (engine/rivers.ts works out where rivers come in from the neighbors' exits). A lake is a
+  // feature too; both only on land hexes.
+  river?: RiverData
+  lake?: true
 }
 
 export type MapState = {
   hexes: Record<string, Hex>
   partyHexId: string | null
   selectedHexId: string | null
+  // Seed of the world formula (engine/worldFormula.ts) that decides sea vs. land for every hex of
+  // this campaign. Picked at START_MAP so the starting hex agrees with the chosen terrain.
+  worldSeed: number
 }
 
 export const EMPTY_MAP_STATE: MapState = {
   hexes: {},
   partyHexId: null,
   selectedHexId: null,
+  worldSeed: 0,
 }
 
 // Merges a loaded save over EMPTY_MAP_STATE rather than using it directly — a save from before a
 // top-level MapState field existed would otherwise come back `undefined` at runtime despite the
 // type saying otherwise. Per-hex fields (e.g. Hex.dangerLevel) aren't covered by this merge; a
 // field that's present but needs content needs an explicit backfill here.
+//
+// A save from before punch-list item 1a (no world seed, or hexes still using the old
+// 'River/coast' terrain) can't be continued — the world formula wouldn't know its sea from its
+// land, and every Record<Terrain> lookup would crash on the old name — so it resets cleanly to a
+// new map instead. All saves are test data; nothing is migrated.
 export function withMapStateDefaults(loaded: Partial<MapState> | null): MapState {
-  return loaded ? { ...EMPTY_MAP_STATE, ...loaded } : EMPTY_MAP_STATE
+  if (!loaded) return EMPTY_MAP_STATE
+  const merged = { ...EMPTY_MAP_STATE, ...loaded }
+  if (merged.partyHexId !== null && !isCurrentFormatSave(loaded)) return EMPTY_MAP_STATE
+  return merged
+}
+
+function isCurrentFormatSave(loaded: Partial<MapState>): boolean {
+  if (typeof loaded.worldSeed !== 'number') return false
+  return Object.values(loaded.hexes ?? {}).every((hex) => isTerrain(hex?.terrain))
+}
+
+// What the hex generator gets to know about the revealed neighbors of a coordinate (see
+// generateHex.ts's NeighborInfo): terrain, river and lake, plus whether that neighbor's river
+// already drains into this coordinate.
+export function neighborInfoFor(state: MapState, coord: AxialCoord): NeighborInfo[] {
+  const id = hexId(coord)
+  return HEX_DIRECTIONS.flatMap((direction) => {
+    const neighbor = state.hexes[hexId(neighborInDirection(coord, direction))]
+    if (!neighbor) return []
+    return [
+      {
+        direction,
+        terrain: neighbor.terrain,
+        river: neighbor.river,
+        lake: neighbor.lake,
+        riverReachesHex: Boolean(neighbor.river) && riverDrainsTo(state.hexes, neighbor.id, id),
+      },
+    ]
+  })
 }
 
 export type HexEditPatch = Partial<Pick<Hex, 'terrain' | 'danger' | 'dangerLevel' | 'poi'>>
@@ -93,13 +131,17 @@ export function mapReducer(state: MapState, action: MapAction): MapState {
     case 'START_MAP': {
       const origin = { q: 0, r: 0 }
       const id = hexId(origin)
-      const details = generateStartingHexDetails(action.terrain, action.rng)
+      const rng = action.rng ?? Math.random
+      // The world is placed so the starting hex agrees with the chosen terrain.
+      const worldSeed = pickWorldSeedForStart(action.terrain, rng)
+      const details = generateNextHexDetails({ worldSeed, coord: origin, neighbors: [], forcedTerrain: action.terrain }, rng)
       // No neighbors exist yet — the starting hex is always Danger Level 1, fixed.
       const startHex: Hex = { id, q: origin.q, r: origin.r, ...details, dangerLevel: 1 }
       return {
         hexes: { [id]: startHex },
         partyHexId: id,
         selectedHexId: id,
+        worldSeed,
       }
     }
 
@@ -114,8 +156,7 @@ export function mapReducer(state: MapState, action: MapAction): MapState {
       const coord = parseHexId(action.hexId)
       if (!state.partyHexId) return state
 
-      const currentTerrain = state.hexes[state.partyHexId].terrain
-      const details = generateNextHexDetails(currentTerrain, action.rng)
+      const details = generateNextHexDetails({ worldSeed: state.worldSeed, coord, neighbors: neighborInfoFor(state, coord) }, action.rng)
       const dangerLevel = computeHexDangerLevel(state, coord, details.danger)
       const newHex: Hex = { id: action.hexId, q: coord.q, r: coord.r, ...details, dangerLevel }
 

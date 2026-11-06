@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { EMPTY_MAP_STATE, isRevealableNow, mapReducer, type MapState } from './mapReducer'
+import { EMPTY_MAP_STATE, isRevealableNow, mapReducer, neighborInfoFor, withMapStateDefaults, type MapState } from './mapReducer'
+import { isSeaAt, pickWorldSeedForStart } from '../engine/worldFormula'
+import { TERRAIN_ELEVATION } from '../data/terrainTables'
 
 function fixedRng(value: number) {
   return () => value
@@ -283,5 +285,124 @@ describe('mapReducer — revisits, selection and unknown actions', () => {
     const before = twoHexMap()
     // Simulates an action from an older/newer build reaching the reducer.
     expect(mapReducer(before, { type: 'NOT_A_REAL_ACTION' } as unknown as Parameters<typeof mapReducer>[1])).toBe(before)
+  })
+})
+
+function seededRng(seed: number): () => number {
+  let state = seed >>> 0
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0
+    return state / 4294967296
+  }
+}
+
+describe('world seed, rivers and lakes (punch-list item 1a)', () => {
+  it('START_MAP picks a world seed placed so the starting hex agrees with the chosen terrain', () => {
+    for (const terrain of ['Grassland', 'Ocean', 'Coast', 'Mountain'] as const) {
+      const state = mapReducer(EMPTY_MAP_STATE, { type: 'START_MAP', terrain, rng: seededRng(terrain.length) })
+      expect(Number.isInteger(state.worldSeed)).toBe(true)
+      expect(state.hexes['0,0'].terrain).toBe(terrain)
+      expect(isSeaAt(state.worldSeed, { q: 0, r: 0 })).toBe(terrain === 'Ocean')
+    }
+  })
+
+  it('two maps started with different rolls get different worlds', () => {
+    const a = mapReducer(EMPTY_MAP_STATE, { type: 'START_MAP', terrain: 'Grassland', rng: seededRng(1) })
+    const b = mapReducer(EMPTY_MAP_STATE, { type: 'START_MAP', terrain: 'Grassland', rng: seededRng(2) })
+    expect(a.worldSeed).not.toBe(b.worldSeed)
+  })
+
+  it('MOVE_PARTY_TO reveals Ocean exactly where the world formula says sea, and never elsewhere', () => {
+    const rng = seededRng(5)
+    let state = mapReducer(EMPTY_MAP_STATE, { type: 'START_MAP', terrain: 'Coast', rng })
+    // Walk a spiral-ish path around the start.
+    const path = ['1,0', '1,-1', '0,-1', '-1,0', '-1,1', '0,1', '1,0', '2,0', '2,-1', '2,-2', '1,-2', '0,-2', '-1,-1', '-2,0', '-2,1', '-2,2', '-1,2', '0,2', '1,1', '2,0']
+    for (const id of path) state = mapReducer(state, { type: 'MOVE_PARTY_TO', hexId: id, rng })
+    expect(Object.keys(state.hexes).length).toBeGreaterThan(15)
+    for (const hex of Object.values(state.hexes)) {
+      if (hex.id === '0,0') continue
+      expect(hex.terrain === 'Ocean').toBe(isSeaAt(state.worldSeed, hex))
+      if (hex.terrain === 'Ocean') {
+        expect(hex.river).toBeUndefined()
+        expect(hex.lake).toBeUndefined()
+      }
+    }
+  })
+
+  it('the same hex gets the same sea-or-land answer whichever way the party approaches it', () => {
+    const rng = seededRng(8)
+    const start = mapReducer(EMPTY_MAP_STATE, { type: 'START_MAP', terrain: 'Coast', rng })
+    const viaEast = mapReducer(mapReducer(start, { type: 'MOVE_PARTY_TO', hexId: '1,0', rng: seededRng(1) }), { type: 'MOVE_PARTY_TO', hexId: '1,-1', rng: seededRng(2) })
+    const viaNorth = mapReducer(mapReducer(start, { type: 'MOVE_PARTY_TO', hexId: '0,-1', rng: seededRng(3) }), { type: 'MOVE_PARTY_TO', hexId: '1,-1', rng: seededRng(4) })
+    expect(viaEast.hexes['1,-1'].terrain === 'Ocean').toBe(viaNorth.hexes['1,-1'].terrain === 'Ocean')
+  })
+
+  it('a new hex continues a river flowing in from a revealed neighbor, and never changes that neighbor', () => {
+    const rng = seededRng(21)
+    let state = mapReducer(EMPTY_MAP_STATE, { type: 'START_MAP', terrain: 'Hills', rng })
+    // Hand a river to the start hex that exits south (direction 5) into 0,1.
+    state = { ...state, hexes: { ...state.hexes, '0,0': { ...state.hexes['0,0'], river: { exit: 5 } } } }
+    const before = state.hexes['0,0']
+    state = mapReducer(state, { type: 'MOVE_PARTY_TO', hexId: '0,1', rng })
+    const next = state.hexes['0,1']
+    expect(state.hexes['0,0']).toBe(before)
+    // A Hills start is placed with no sea next to it, so 0,1 is land and the river must continue.
+    expect(next.terrain).not.toBe('Ocean')
+    expect(next.river).toBeDefined()
+    expect(TERRAIN_ELEVATION[next.terrain]).toBeLessThanOrEqual(TERRAIN_ELEVATION.Hills)
+    expect(next.river!.exit).not.toBe(2) // not back north, where it came from
+  })
+
+  it('START_MAP throws rather than starting on a world that contradicts the chosen terrain', () => {
+    // Not reachable with the real noise (the search walks consecutive seeds); pinned through the
+    // engine function with an exhausted search.
+    expect(() => pickWorldSeedForStart('Ocean', () => 0.5, 0)).toThrow()
+  })
+
+  it('REROLL_HEX and EDIT_HEX keep the hex\'s river and lake as they are', () => {
+    let state = mapReducer(EMPTY_MAP_STATE, { type: 'START_MAP', terrain: 'Grassland', rng: seededRng(3) })
+    state = { ...state, hexes: { ...state.hexes, '0,0': { ...state.hexes['0,0'], river: { exit: 1 }, lake: true } } }
+    state = mapReducer(state, { type: 'REROLL_HEX', hexId: '0,0', rng: seededRng(9) })
+    expect(state.hexes['0,0'].river).toEqual({ exit: 1 })
+    expect(state.hexes['0,0'].lake).toBe(true)
+    state = mapReducer(state, { type: 'EDIT_HEX', hexId: '0,0', patch: { terrain: 'Ocean', poi: undefined } })
+    expect(state.hexes['0,0'].terrain).toBe('Ocean')
+    expect(state.hexes['0,0'].river).toEqual({ exit: 1 })
+    expect(state.hexes['0,0'].lake).toBe(true)
+  })
+
+  it('neighborInfoFor reports revealed neighbors with their direction, river, lake and drain-back flag', () => {
+    let state = mapReducer(EMPTY_MAP_STATE, { type: 'START_MAP', terrain: 'Grassland', rng: seededRng(3) })
+    // 0,0 exits south-east (0) into 1,0; from 1,0 (unrevealed yet) the new hex would be asked about 0,0 as its north-west (3) neighbor.
+    state = { ...state, hexes: { ...state.hexes, '0,0': { ...state.hexes['0,0'], river: { exit: 0 }, lake: true } } }
+    const info = neighborInfoFor(state, { q: 1, r: 0 })
+    expect(info).toEqual([{ direction: 3, terrain: 'Grassland', river: { exit: 0 }, lake: true, riverReachesHex: true }])
+    expect(neighborInfoFor(state, { q: 5, r: 5 })).toEqual([])
+  })
+})
+
+describe('withMapStateDefaults and old saves', () => {
+  it('fills in a missing world seed for an empty (not yet started) save', () => {
+    expect(withMapStateDefaults({ hexes: {}, partyHexId: null, selectedHexId: null })).toEqual(EMPTY_MAP_STATE)
+  })
+
+  it('a started save from before the world seed resets cleanly to a new map', () => {
+    const old = { hexes: { '0,0': { id: '0,0', q: 0, r: 0, terrain: 'Grassland', danger: 'Safe', dangerLevel: 1 } }, partyHexId: '0,0', selectedHexId: '0,0' }
+    expect(withMapStateDefaults(old as unknown as Partial<MapState>)).toEqual(EMPTY_MAP_STATE)
+  })
+
+  it('a save still using the old River/coast terrain resets cleanly instead of crashing', () => {
+    const old = {
+      hexes: { '0,0': { id: '0,0', q: 0, r: 0, terrain: 'River/coast', danger: 'Safe', dangerLevel: 1 } },
+      partyHexId: '0,0',
+      selectedHexId: '0,0',
+      worldSeed: 12,
+    }
+    expect(withMapStateDefaults(old as unknown as Partial<MapState>)).toEqual(EMPTY_MAP_STATE)
+  })
+
+  it('a current-format save loads as-is', () => {
+    const state = mapReducer(EMPTY_MAP_STATE, { type: 'START_MAP', terrain: 'Hills', rng: seededRng(4) })
+    expect(withMapStateDefaults(JSON.parse(JSON.stringify(state)))).toEqual(state)
   })
 })

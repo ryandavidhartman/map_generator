@@ -462,3 +462,13 @@ button.primary:hover {
 .swatch-dot {
   border-radius: 50%;
 }
+
+.swatch-line {
+  height: 3px;
+  border-radius: 2px;
+}
+
+.swatch-oval {
+  height: 0.55rem;
+  border-radius: 50%;
+}

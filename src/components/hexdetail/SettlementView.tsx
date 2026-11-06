@@ -13,6 +13,7 @@ import { HexBaseInfo } from './HexBaseInfo'
 import { EncounterRoller } from '../EncounterRoller'
 import { PricesPanel } from './PricesPanel'
 import { CivicAmenitiesPanel } from './CivicAmenitiesPanel'
+import { DIRECTION_NAMES } from '../../hexgrid/hexMath'
 
 const SHAPE_LABEL: Record<OutlineShape, string> = {
   round: 'round',
@@ -33,8 +34,13 @@ function compass(angle: number): string {
   return names[index]
 }
 
+// "river from the north, out to the south-east" — the hex's real river edges (punch-list 1b).
 function waterLabel(water: PlanWater): string {
-  return water.kind === 'coast' ? `coast, sea to the ${compass(water.angle)}` : `river flowing ${compass(water.angle)}`
+  if (water.kind === 'coast') return `coast, sea to the ${compass(water.angle)}`
+  const from = water.entries.map((d) => DIRECTION_NAMES[d]).join(' and ')
+  if (water.course === 'spring') return `river rising in town, out to the ${DIRECTION_NAMES[water.exit!]}`
+  if (water.course === 'ending') return `river from the ${from}, ending in town`
+  return `river from the ${from}, out to the ${DIRECTION_NAMES[water.exit!]}`
 }
 
 function defaultShopTierForDistrict(type: DistrictType): ShopTier {
@@ -51,10 +57,10 @@ export function SettlementView({ hex, site }: { hex: Hex; site: Settlement }) {
     setExpandedId((current) => (current === id ? null : id))
   }
 
-  // The water follows the hex (user rule): its own terrain plus its revealed neighbors, each
-  // with its direction from this hex on the overland map.
+  // The water follows the hex (user rule): its own terrain and river, the world formula's sea
+  // around it, and its revealed neighbors.
   const mapState = useMapState()
-  const water = useMemo(() => waterForMapHex(hex, mapState.hexes), [hex, mapState.hexes])
+  const water = useMemo(() => waterForMapHex(hex, mapState.hexes, mapState.worldSeed), [hex, mapState.hexes, mapState.worldSeed])
   const plan = useMemo(
     () =>
       computeSettlementPlan({

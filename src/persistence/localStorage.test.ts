@@ -43,7 +43,7 @@ function mapWithEverySiteKind(): MapState {
     const id = `${q},0`
     state = {
       ...state,
-      hexes: { ...state.hexes, [id]: { id, q, r: 0, terrain: 'Grassland', danger: 'Risky', dangerLevel: 3, poi, site } },
+      hexes: { ...state.hexes, [id]: { id, q, r: 0, terrain: 'Grassland', danger: 'Risky', dangerLevel: 3, poi, site, river: { exit: 0 }, lake: true } },
     }
     q++
   }
@@ -61,7 +61,7 @@ describe('withMapStateDefaults', () => {
 
   it('fills top-level fields missing from an older save, keeping the ones it has', () => {
     const hexes: MapState['hexes'] = { '0,0': { id: '0,0', q: 0, r: 0, terrain: 'Forest/jungle', danger: 'Safe', dangerLevel: 1 } }
-    const merged = withMapStateDefaults({ hexes, partyHexId: '0,0' })
+    const merged = withMapStateDefaults({ hexes, partyHexId: '0,0', worldSeed: 7 })
     expect(merged.hexes).toBe(hexes)
     expect(merged.partyHexId).toBe('0,0')
     expect(merged.selectedHexId).toBe(EMPTY_MAP_STATE.selectedHexId)
@@ -69,15 +69,22 @@ describe('withMapStateDefaults', () => {
   })
 
   it('lets saved values win over the defaults', () => {
-    const merged = withMapStateDefaults({ hexes: {}, partyHexId: '1,0', selectedHexId: '1,0' })
+    const merged = withMapStateDefaults({ hexes: {}, partyHexId: '1,0', selectedHexId: '1,0', worldSeed: 7 })
     expect(merged.selectedHexId).toBe('1,0')
+  })
+
+  it('a started save with no world seed (from before punch-list item 1a) resets to a new map', () => {
+    const hexes: MapState['hexes'] = { '0,0': { id: '0,0', q: 0, r: 0, terrain: 'Forest/jungle', danger: 'Safe', dangerLevel: 1 } }
+    expect(withMapStateDefaults({ hexes, partyHexId: '0,0' })).toEqual(EMPTY_MAP_STATE)
   })
 })
 
 describe('saveMapState / loadMapState', () => {
-  it('round-trips a map holding every site kind without losing data', () => {
+  it('round-trips a map holding every site kind (with rivers and lakes) without losing data', () => {
     vi.stubGlobal('localStorage', memoryStorage())
     const state = mapWithEverySiteKind()
+    expect(typeof state.worldSeed).toBe('number')
+    expect(Object.values(state.hexes).some((h) => h.river || h.lake)).toBe(true)
     const kinds = Object.values(state.hexes).map((h) => h.site?.kind).filter(Boolean)
     expect(new Set(kinds)).toEqual(new Set(['dungeon', 'settlement', 'tower', 'keep', 'camp', 'shrine', 'rift']))
 

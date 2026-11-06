@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { MapProvider, useMapState } from '../state/MapContext'
-import type { MapState } from '../state/mapReducer'
+import type { Hex, MapState } from '../state/mapReducer'
 import { TERRAIN_ORDER, type Terrain } from '../data/tables'
 import { locationFeatureForD200 } from '../data/locationTables'
 import { pointOfInterestForFeatureRoll } from '../engine/generateHex'
+import { pickWorldSeedForStart } from '../engine/worldFormula'
 import { HexSiteContent } from '../components/hexdetail/HexSiteContent'
+import { reviewRiverFor } from './poiReviewRiver'
 
 const MIN_ROLL = 1
 const MAX_ROLL = 200
@@ -33,8 +35,25 @@ export function PoiReviewPage() {
   const initialState = useMemo<MapState | null>(() => {
     if (!rollIsValid) return null
     const poi = pointOfInterestForFeatureRoll(terrain, roll, Math.random)
-    const hex = { id: REVIEW_HEX_ID, q: 0, r: 0, terrain, danger: 'Safe' as const, dangerLevel, poi }
-    return { hexes: { [REVIEW_HEX_ID]: hex }, partyHexId: REVIEW_HEX_ID, selectedHexId: REVIEW_HEX_ID }
+    // A fresh world seed each time, placed to agree with the chosen terrain, so a settlement's
+    // sea (from the formula around this lone hex) shows varied coast cases across rerolls. Each
+    // reroll also picks a river case (none, spring, through, ending), so river cases show too.
+    const worldSeed = pickWorldSeedForStart(terrain, Math.random)
+    const review = reviewRiverFor(terrain, { q: 0, r: 0 }, worldSeed, dangerLevel, Math.random)
+    const hex: Hex = {
+      id: REVIEW_HEX_ID,
+      q: 0,
+      r: 0,
+      terrain,
+      danger: 'Safe',
+      dangerLevel,
+      poi,
+      ...(review.river ? { river: review.river } : {}),
+      ...(review.lake ? { lake: review.lake } : {}),
+    }
+    const hexes: Record<string, Hex> = { [REVIEW_HEX_ID]: hex }
+    for (const neighbor of review.neighbors) hexes[neighbor.id] = neighbor
+    return { hexes, partyHexId: REVIEW_HEX_ID, selectedHexId: REVIEW_HEX_ID, worldSeed }
     // rerollNonce isn't read above — bumping it deliberately forces this memo (and thus the keyed
     // MapProvider below) to recompute with a fresh Math.random() roll for the same feature.
   }, [terrain, roll, rollIsValid, dangerLevel, rerollNonce])
@@ -64,7 +83,7 @@ export function PoiReviewPage() {
           </p>
         )}
         <label>
-          Terrain (affects the terrain-keyed Cataclysm/Natural landmark rows, and a settlement's sea/river — there are no neighbors here, so Ocean and River/coast pick a random side)
+          Terrain (affects the terrain-keyed Cataclysm/Natural landmark rows, and a settlement's sea — a fresh world is placed around this lone hex on every reroll, so Coast and Ocean show varied coasts, and land terrains get a random river case)
           <select value={terrain} onChange={(e) => setTerrain(e.target.value as Terrain)}>
             {TERRAIN_ORDER.map((t) => (
               <option key={t} value={t}>
