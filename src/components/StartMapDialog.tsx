@@ -30,7 +30,7 @@ export function StartMapDialog() {
         </select>
       </label>
       <button type="button" onClick={handleRoll}>
-        Roll 2d6
+        Roll 3d6
       </button>
 
       <button type="button" className="primary" onClick={handleStart}>

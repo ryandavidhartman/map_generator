@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { Hex } from '../state/mapReducer'
-import { axialToPixel, hexCornersPointsAttr, hexId, type AxialCoord } from './hexMath'
-import { DANGER_COLORS, TERRAIN_COLORS } from './colors'
+import { axialToPixel, edgeMidpoint, hexCornersPointsAttr, hexId, type AxialCoord, type HexDirection, type PixelPoint } from './hexMath'
+import { DANGER_COLORS, TERRAIN_COLORS, WATER_FEATURE_COLOR } from './colors'
 
 const UNREVEALED_FILL_REVEALABLE = '#3a3a3a'
 const UNREVEALED_FILL_FOG = '#1a1a1a'
@@ -17,6 +17,11 @@ export type HexTileProps = {
   coord: AxialCoord
   size: number
   hex?: Hex
+  // Directions rivers come in from (worked out by the grid from the neighbors' exits — see
+  // engine/rivers.ts), for every revealed hex: a Swamp, lake, Coast or Ocean hex revealed before
+  // the river reached it has no river record of its own, but still receives the water. The exit
+  // is on the hex itself.
+  riverEntries?: HexDirection[]
   isParty: boolean
   isSelected: boolean
   isRevealable: boolean
@@ -24,7 +29,17 @@ export type HexTileProps = {
   onDoubleClick: () => void
 }
 
-export function HexTile({ coord, size, hex, isParty, isSelected, isRevealable, onSingleClick, onDoubleClick }: HexTileProps) {
+// A river is a simple blue line from edge to edge: each entry edge runs to the exit edge, or to
+// the hex's center when the river ends here (no exit — including a hex with no river record of
+// its own that only receives inflows); a spring (no entry) runs from the center out.
+function riverLines(center: PixelPoint, size: number, exit: HexDirection | null, entries: HexDirection[]): [PixelPoint, PixelPoint][] {
+  const at = (d: HexDirection) => edgeMidpoint(center, size, d)
+  const end = exit === null ? center : at(exit)
+  if (entries.length === 0) return [[center, end]]
+  return entries.map((d) => [at(d), end])
+}
+
+export function HexTile({ coord, size, hex, riverEntries = [], isParty, isSelected, isRevealable, onSingleClick, onDoubleClick }: HexTileProps) {
   const pendingClick = useRef<number | null>(null)
   const center = axialToPixel(coord, size)
   const points = hexCornersPointsAttr(center, size * 0.96)
@@ -72,6 +87,12 @@ export function HexTile({ coord, size, hex, isParty, isSelected, isRevealable, o
       data-hex-id={hexId(coord)}
     >
       <polygon points={points} fill={fill} stroke={isSelected ? '#ffffff' : stroke} strokeWidth={isSelected ? 3 : 2} />
+      {hex &&
+        (hex.river || riverEntries.length > 0) &&
+        riverLines(center, size, hex.river?.exit ?? null, riverEntries).map(([a, b], i) => (
+          <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={WATER_FEATURE_COLOR} strokeWidth={size * 0.09} strokeLinecap="round" data-river />
+        ))}
+      {hex?.lake && <ellipse cx={center.x} cy={center.y + size * 0.3} rx={size * 0.26} ry={size * 0.16} fill={WATER_FEATURE_COLOR} stroke="#1c4f7a" strokeWidth={1} data-lake />}
       {hex?.poi && <circle cx={center.x} cy={center.y} r={size * 0.22} fill="#ffd54a" stroke="#00000088" strokeWidth={1} />}
       {isParty && <circle cx={center.x} cy={center.y} r={size * 0.14} fill="#ffffff" stroke="#000000" strokeWidth={1.5} />}
     </g>

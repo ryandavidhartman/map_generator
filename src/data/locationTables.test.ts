@@ -85,6 +85,12 @@ describe('Cataclysm table (d8, terrain-keyed)', () => {
     expect(cataclysmForTerrain('Mountain', 1)).toBe('Eruption reshaped peaks, buried valleys')
     expect(cataclysmForTerrain('Ocean', 8)).toBe('Ritual summoned a kraken/maelstrom, drowned a civilization')
   })
+
+  it('Hills has its own rows, and Coast keeps the old River/coast rows (river mouths are on coasts)', () => {
+    expect(cataclysmForTerrain('Hills', 1)).toBe('Landslide buried a hillside village')
+    expect(cataclysmForTerrain('Hills', 8)).toBe('A curse turned the green slopes to barren rock')
+    expect(cataclysmForTerrain('Coast', 3)).toBe('Quake rerouted the river or sank the coastline')
+  })
 })
 
 describe('Natural Landmark table (terrain-keyed, no roll)', () => {
@@ -98,5 +104,9 @@ describe('Natural Landmark table (terrain-keyed, no roll)', () => {
     expect(naturalLandmarkForTerrain('Swamp')).toBe(
       'Massive, hollowed-out cypress tree wide enough to serve as shelter, rising from the mire',
     )
+    expect(naturalLandmarkForTerrain('Hills')).toBe(
+      'A great barrow-shaped hill crowned by a ring of ancient oaks, with a cave mouth on its eastern slope',
+    )
+    expect(naturalLandmarkForTerrain('Coast')).toBe('Natural rock arch or sea cave carved by centuries of tidal erosion')
   })
 })

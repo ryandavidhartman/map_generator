@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { wildernessMonsterNameForRoll, wildernessEncounterLevelDie } from './wildernessMonsterLevelTables'
 import type { Terrain } from './tables'
 
-const TERRAINS: Terrain[] = ['Grassland', 'Forest/jungle', 'River/coast', 'Ocean', 'Mountain', 'Desert/arctic', 'Swamp']
+const TERRAINS: Terrain[] = ['Grassland', 'Forest/jungle', 'Coast', 'Ocean', 'Hills', 'Mountain', 'Desert/arctic', 'Swamp']
 
 describe('wildernessEncounterLevelDie', () => {
   it('matches the book\'s three tiers', () => {
@@ -57,5 +57,12 @@ describe('wildernessMonsterNameForRoll', () => {
   it('throws for an out-of-range roll', () => {
     expect(() => wildernessMonsterNameForRoll('Grassland', 'Animal', 0)).toThrow()
     expect(() => wildernessMonsterNameForRoll('Grassland', 'Animal', 21)).toThrow()
+  })
+})
+
+describe('Hills (wired by punch-list item 1a)', () => {
+  it('rolls on its own verbatim table', () => {
+    expect(wildernessMonsterNameForRoll('Hills', 'Giant', 5)).toBe('Giant, Hill')
+    expect(wildernessMonsterNameForRoll('Hills', 'Airborne', 20)).toBe('Wyvern')
   })
 })

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { TERRAIN_ORDER } from './tables'
 import {
   encounterForD100,
   TERRAIN_TO_ENCOUNTER_KEYS,
@@ -23,9 +24,10 @@ const ALL_KEYS: EncounterTableKey[] = [
   'Jungle',
   'Low District',
   'Market',
+  'Hills',
   'Mountain',
   'Ocean',
-  'River and Coast',
+  'Coast',
   'Ruins',
   'Slums',
   'Swamp',
@@ -65,10 +67,16 @@ describe('encounterForD100', () => {
 
 describe('TERRAIN_TO_ENCOUNTER_KEYS', () => {
   it('maps every overland terrain to at least one table', () => {
-    const terrains = ['Desert/arctic', 'Swamp', 'Grassland', 'Forest/jungle', 'River/coast', 'Ocean', 'Mountain'] as const
+    const terrains = TERRAIN_ORDER
     for (const terrain of terrains) {
       expect(TERRAIN_TO_ENCOUNTER_KEYS[terrain].length).toBeGreaterThan(0)
     }
+  })
+
+  it('Hills rolls its own table and Coast the old River and Coast table', () => {
+    expect(TERRAIN_TO_ENCOUNTER_KEYS.Hills).toEqual(['Hills'])
+    expect(TERRAIN_TO_ENCOUNTER_KEYS.Coast).toEqual(['Coast'])
+    expect(encounterForD100('Hills', 1)).toBe('A barrow mound stands open, its capstone freshly rolled aside')
   })
 
   it('merges two book terrains for the combined overland terrains', () => {

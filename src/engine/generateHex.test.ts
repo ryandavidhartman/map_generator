@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { terrainFor2d6, newHexResultFor2d6, stepTerrain, dangerForD6, settlementNameForD20, settlementNameColumnFor, TERRAIN_ORDER } from '../data/tables'
+import { terrainFor3d6, dangerForD6, settlementNameForD20, settlementNameColumnFor, TERRAIN_ORDER, type Terrain } from '../data/tables'
 import {
-  rollNextTerrain,
   rollPointOfInterest,
   pointOfInterestForFeatureRoll,
-  generateStartingHexDetails,
   generateNextHexDetails,
+  rollLandTerrain,
+  rollStartingTerrain,
+  pickRiverExit,
+  type NeighborInfo,
+  type NewHexInput,
 } from './generateHex'
+import { isNextToSea, isSeaAt, pickWorldSeedForStart } from './worldFormula'
+import { COAST_RATE, LAND_TERRAINS, TERRAIN_ELEVATION } from '../data/terrainTables'
+import { HEX_DIRECTIONS, neighborInDirection, oppositeDirection, type HexDirection } from '../hexgrid/hexMath'
 
 // A scripted RNG: each call to Math.random() returns the next queued value.
 // rollDie(sides) computes floor(rng() * sides) + 1, so to force a specific
@@ -23,58 +29,253 @@ function forDieResult(n: number, sides: number): number {
   return (n - 1) / sides
 }
 
-describe('Hex Terrain table (2d6)', () => {
+function seededRng(seed: number): () => number {
+  let state = seed >>> 0
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0
+    return state / 4294967296
+  }
+}
+
+describe('Hex Terrain table (3d6)', () => {
   it.each([
-    [2, 'Desert/arctic'],
-    [3, 'Swamp'],
-    [4, 'Grassland'],
-    [5, 'Grassland'],
-    [6, 'Grassland'],
-    [7, 'Forest/jungle'],
-    [8, 'Forest/jungle'],
-    [9, 'River/coast'],
-    [10, 'River/coast'],
-    [11, 'Ocean'],
-    [12, 'Mountain'],
+    [3, 'Desert/arctic'],
+    [4, 'Desert/arctic'],
+    [5, 'Swamp'],
+    [6, 'Swamp'],
+    [7, 'Grassland'],
+    [9, 'Grassland'],
+    [10, 'Forest/jungle'],
+    [11, 'Forest/jungle'],
+    [12, 'Hills'],
+    [13, 'Coast'],
+    [14, 'Coast'],
+    [15, 'Ocean'],
+    [16, 'Ocean'],
+    [17, 'Mountain'],
+    [18, 'Mountain'],
   ] as const)('roll %i -> %s', (roll, terrain) => {
-    expect(terrainFor2d6(roll)).toBe(terrain)
+    expect(terrainFor3d6(roll)).toBe(terrain)
   })
 
   it('throws out of range', () => {
-    expect(() => terrainFor2d6(1)).toThrow()
-    expect(() => terrainFor2d6(13)).toThrow()
+    expect(() => terrainFor3d6(2)).toThrow()
+    expect(() => terrainFor3d6(19)).toThrow()
+  })
+
+  it('rollStartingTerrain sums three d6 (Ocean row included)', () => {
+    expect(rollStartingTerrain(scripted([forDieResult(5, 6), forDieResult(5, 6), forDieResult(5, 6)]))).toBe('Ocean')
+    expect(rollStartingTerrain(scripted([forDieResult(1, 6), forDieResult(1, 6), forDieResult(1, 6)]))).toBe('Desert/arctic')
+  })
+
+  it('TERRAIN_ORDER lists all eight terrains once', () => {
+    expect([...TERRAIN_ORDER].sort()).toEqual(['Coast', 'Desert/arctic', 'Forest/jungle', 'Grassland', 'Hills', 'Mountain', 'Ocean', 'Swamp'])
   })
 })
 
-describe('New Hex table (2d6)', () => {
-  it.each([
-    [2, { kind: 'step', steps: 1 }],
-    [3, { kind: 'step', steps: 1 }],
-    [4, { kind: 'same' }],
-    [8, { kind: 'same' }],
-    [9, { kind: 'step', steps: 2 }],
-    [11, { kind: 'step', steps: 2 }],
-    [12, { kind: 'reroll' }],
-  ] as const)('roll %i -> %o', (roll, expected) => {
-    expect(newHexResultFor2d6(roll)).toEqual(expected)
-  })
-})
+// Sample a roll many times and return each terrain's share.
+function shares(roll: (rng: () => number) => Terrain, n = 4000): Record<string, number> {
+  const rng = seededRng(7)
+  const counts: Record<string, number> = {}
+  for (let i = 0; i < n; i++) {
+    const t = roll(rng)
+    counts[t] = (counts[t] ?? 0) + 1
+  }
+  return Object.fromEntries(Object.entries(counts).map(([t, c]) => [t, c / n]))
+}
 
-describe('terrain circular stepping', () => {
-  it('steps forward through the loop', () => {
-    expect(stepTerrain('Desert/arctic', 1)).toBe('Swamp')
-    expect(stepTerrain('Mountain', 1)).toBe('Desert/arctic')
-  })
-
-  it('wraps around when stepping past the end', () => {
-    expect(stepTerrain('Ocean', 2)).toBe('Desert/arctic')
-    expect(stepTerrain('Mountain', 2)).toBe('Swamp')
+describe('rollLandTerrain (neighbor-weighted)', () => {
+  it('with no neighbors follows the 3d6 base frequencies, Ocean excluded, inland Coast damped', () => {
+    const got = shares((rng) => rollLandTerrain([], false, Infinity, rng))
+    expect(got.Ocean).toBeUndefined()
+    // Base weights without Ocean and with Coast × 0.05: Grassland 61, Forest 54, Hills 25, Swamp 16, Desert 4, Mountain 4, Coast 1.8.
+    const total = 61 + 54 + 25 + 16 + 4 + 4 + 36 * 0.05
+    expect(got.Grassland).toBeCloseTo(61 / total, 1)
+    expect(got['Forest/jungle']).toBeCloseTo(54 / total, 1)
+    expect(got.Hills).toBeCloseTo(25 / total, 1)
   })
 
-  it('is a no-op for a 0 step', () => {
-    for (const terrain of TERRAIN_ORDER) {
-      expect(stepTerrain(terrain, 0)).toBe(terrain)
+  it('next to the sea, Coast keeps its full base weight', () => {
+    const got = shares((rng) => rollLandTerrain([], true, Infinity, rng))
+    expect(got.Coast).toBeCloseTo(36 / (61 + 54 + 25 + 16 + 4 + 4 + 36), 1)
+  })
+
+  it('a neighbor multiplies each terrain by the pair weight: Mountain neighbors pull in Mountain and Hills', () => {
+    const alone = shares((rng) => rollLandTerrain([], false, Infinity, rng))
+    const byMountains = shares((rng) => rollLandTerrain([{ terrain: 'Mountain' }, { terrain: 'Mountain' }], false, Infinity, rng))
+    expect(byMountains.Mountain).toBeGreaterThan(alone.Mountain * 5)
+    expect(byMountains.Hills).toBeGreaterThan(alone.Hills)
+    expect(byMountains.Swamp ?? 0).toBeLessThan(0.01)
+  })
+
+  it('never uphill: an elevation cap excludes higher terrains but always leaves Coast and Swamp', () => {
+    for (let i = 0; i < 200; i++) {
+      const t = rollLandTerrain([{ terrain: 'Mountain' }, { terrain: 'Hills' }], false, 1, seededRng(i))
+      expect(['Coast', 'Swamp']).toContain(t)
     }
+    for (let i = 0; i < 200; i++) {
+      expect(TERRAIN_ELEVATION[rollLandTerrain([{ terrain: 'Hills' }], false, 2, seededRng(i))]).toBeLessThanOrEqual(2)
+    }
+  })
+
+  it('every land terrain can be rolled (pair weights are never 0)', () => {
+    const got = shares((rng) => rollLandTerrain([{ terrain: 'Grassland' }], true, Infinity, rng), 20000)
+    for (const terrain of LAND_TERRAINS) expect(got[terrain] ?? 0).toBeGreaterThan(0)
+  })
+})
+
+// A world seed placed so the origin is land (or sea), for generator tests.
+const LAND_SEED = pickWorldSeedForStart('Grassland', seededRng(1))
+const COAST_SEED = pickWorldSeedForStart('Coast', seededRng(2))
+const SEA_SEED = pickWorldSeedForStart('Ocean', seededRng(3))
+const ORIGIN = { q: 0, r: 0 }
+
+function neighbor(direction: HexDirection, terrain: Terrain, extra: Partial<NeighborInfo> = {}): NeighborInfo {
+  return { direction, terrain, riverReachesHex: false, ...extra }
+}
+
+describe('pickWorldSeedForStart', () => {
+  it('places the world so the starting hex agrees with the chosen terrain', () => {
+    expect(isSeaAt(SEA_SEED, ORIGIN)).toBe(true)
+    expect(isSeaAt(LAND_SEED, ORIGIN)).toBe(false)
+    expect(isNextToSea(LAND_SEED, ORIGIN)).toBe(false)
+    expect(isSeaAt(COAST_SEED, ORIGIN)).toBe(false)
+    expect(isNextToSea(COAST_SEED, ORIGIN)).toBe(true)
+  })
+})
+
+describe('generateNextHexDetails', () => {
+  it('a hex on the formula\'s sea is Ocean, with no river or lake, and still rolls danger and POI', () => {
+    const details = generateNextHexDetails({ worldSeed: SEA_SEED, coord: ORIGIN, neighbors: [] }, scripted([forDieResult(6, 6), forDieResult(2, 6)]))
+    expect(details).toEqual({ terrain: 'Ocean', danger: 'Deadly', poi: undefined })
+  })
+
+  it('Ocean is never rolled on the formula\'s land, whatever the neighbors', () => {
+    const neighbors = HEX_DIRECTIONS.map((d) => neighbor(d, 'Ocean'))
+    for (let i = 0; i < 100; i++) {
+      expect(generateNextHexDetails({ worldSeed: LAND_SEED, coord: ORIGIN, neighbors }, seededRng(i)).terrain).not.toBe('Ocean')
+    }
+  })
+
+  it('the starting hex keeps the chosen terrain as-is (no coast conversion), Ocean included', () => {
+    for (const terrain of TERRAIN_ORDER) {
+      const seed = pickWorldSeedForStart(terrain, seededRng(11))
+      const details = generateNextHexDetails({ worldSeed: seed, coord: ORIGIN, neighbors: [], forcedTerrain: terrain }, seededRng(5))
+      expect(details.terrain).toBe(terrain)
+    }
+  })
+
+  it('coast conversion: land next to the sea becomes Coast at its terrain\'s rate', () => {
+    let coast = 0
+    const n = 3000
+    for (let i = 0; i < n; i++) {
+      // All-Grassland neighbors make the land roll (almost) always Grassland, so the rate is Grassland's.
+      const neighbors = HEX_DIRECTIONS.slice(0, 3).map((d) => neighbor(d, 'Grassland'))
+      if (generateNextHexDetails({ worldSeed: COAST_SEED, coord: ORIGIN, neighbors }, seededRng(i)).terrain === 'Coast') coast++
+    }
+    expect(coast / n).toBeGreaterThan(COAST_RATE.Grassland - 0.06)
+    expect(coast / n).toBeLessThan(COAST_RATE.Grassland + 0.06)
+  })
+
+  it('a river flowing in from a neighbor continues: the hex gets a river, never uphill of the entry', () => {
+    // The neighbor to the north (direction 2) exits south (direction 5 = opposite of 2) — into this hex.
+    const entry = neighbor(2, 'Grassland', { river: { exit: oppositeDirection(2) } })
+    for (let i = 0; i < 100; i++) {
+      const details = generateNextHexDetails({ worldSeed: LAND_SEED, coord: ORIGIN, neighbors: [entry] }, seededRng(i))
+      expect(details.river).toBeDefined()
+      expect(TERRAIN_ELEVATION[details.terrain]).toBeLessThanOrEqual(TERRAIN_ELEVATION.Grassland)
+      if (details.river!.exit !== null) expect(details.river!.exit).not.toBe(2)
+      else expect(details.terrain === 'Coast' || details.terrain === 'Swamp' || details.lake).toBeTruthy()
+    }
+  })
+
+  it('a river flowing into a Coast hex ends there', () => {
+    const entry = neighbor(2, 'Swamp', { river: { exit: 5 } })
+    // Forced Coast (the start-hex path) — the river step still runs and must end here.
+    for (let i = 0; i < 50; i++) {
+      const forced = generateNextHexDetails({ worldSeed: LAND_SEED, coord: ORIGIN, neighbors: [entry], forcedTerrain: 'Coast' }, seededRng(i))
+      expect(forced.river).toEqual({ exit: null })
+    }
+    // Rolled Coast next to the sea: every Coast result ends the river, and Coast does come up.
+    let coasts = 0
+    for (let i = 0; i < 200; i++) {
+      const details = generateNextHexDetails({ worldSeed: COAST_SEED, coord: ORIGIN, neighbors: [entry] }, seededRng(i))
+      if (details.terrain !== 'Coast') continue
+      coasts++
+      expect(details.river).toEqual({ exit: null })
+    }
+    expect(coasts).toBeGreaterThan(50)
+  })
+
+  it('two rivers flowing in merge: both entries are honored, the exit never points back into either', () => {
+    const entries = [neighbor(2, 'Hills', { river: { exit: 5 } }), neighbor(1, 'Hills', { river: { exit: 4 } })]
+    let exits = 0
+    for (let i = 0; i < 100; i++) {
+      const details = generateNextHexDetails({ worldSeed: LAND_SEED, coord: ORIGIN, neighbors: entries }, seededRng(i))
+      expect(details.river).toBeDefined()
+      expect(details.river!.exit).not.toBe(1)
+      expect(details.river!.exit).not.toBe(2)
+      if (details.river!.exit !== null) exits++
+      else expect(details.terrain === 'Coast' || details.terrain === 'Swamp' || details.lake).toBeTruthy()
+    }
+    expect(exits).toBeGreaterThan(50)
+  })
+
+  it('a lake is a feature on land only, rolled at the lake chance', () => {
+    let lakes = 0
+    const n = 4000
+    for (let i = 0; i < n; i++) if (generateNextHexDetails({ worldSeed: LAND_SEED, coord: ORIGIN, neighbors: [] }, seededRng(i)).lake) lakes++
+    expect(lakes / n).toBeGreaterThan(0.02)
+    expect(lakes / n).toBeLessThan(0.1)
+  })
+})
+
+describe('pickRiverExit', () => {
+  const base: NewHexInput = { worldSeed: LAND_SEED, coord: ORIGIN, neighbors: [] }
+
+  it('never exits through an entry edge', () => {
+    for (let i = 0; i < 100; i++) expect(pickRiverExit(base, 'Grassland', [2], seededRng(i))).not.toBe(2)
+  })
+
+  it('revealed hexes don\'t change: exits only to unrevealed hexes or revealed water-takers', () => {
+    const dry = HEX_DIRECTIONS.map((d) => neighbor(d, 'Grassland'))
+    expect(pickRiverExit({ ...base, neighbors: dry }, 'Grassland', [], seededRng(1))).toBeNull()
+    const withSwamp = [...dry.slice(0, 5), neighbor(5, 'Swamp')]
+    for (let i = 0; i < 50; i++) expect(pickRiverExit({ ...base, neighbors: withSwamp }, 'Grassland', [], seededRng(i))).toBe(5)
+    const withRiver = [...dry.slice(0, 5), neighbor(5, 'Grassland', { river: { exit: 0 } })]
+    for (let i = 0; i < 50; i++) expect(pickRiverExit({ ...base, neighbors: withRiver }, 'Grassland', [], seededRng(i))).toBe(5)
+    const withLake = [...dry.slice(0, 5), neighbor(5, 'Grassland', { lake: true })]
+    for (let i = 0; i < 50; i++) expect(pickRiverExit({ ...base, neighbors: withLake }, 'Grassland', [], seededRng(i))).toBe(5)
+  })
+
+  it('never uphill: a revealed water-taker higher than this hex is not an exit', () => {
+    const neighbors = [...HEX_DIRECTIONS.slice(0, 5).map((d) => neighbor(d, 'Grassland')), neighbor(5, 'Mountain', { lake: true })]
+    expect(pickRiverExit({ ...base, neighbors }, 'Grassland', [], seededRng(1))).toBeNull()
+  })
+
+  it('never into a river that already drains back here (no loops)', () => {
+    const neighbors = [...HEX_DIRECTIONS.slice(0, 5).map((d) => neighbor(d, 'Grassland')), neighbor(5, 'Grassland', { river: { exit: 0 }, riverReachesHex: true })]
+    expect(pickRiverExit({ ...base, neighbors }, 'Grassland', [], seededRng(1))).toBeNull()
+  })
+
+  it('prefers to keep going straight and to head for the sea', () => {
+    const counts: Record<number, number> = {}
+    for (let i = 0; i < 2000; i++) {
+      const exit = pickRiverExit(base, 'Grassland', [2], seededRng(i))!
+      counts[exit] = (counts[exit] ?? 0) + 1
+    }
+    // Straight on from an entry at 2 (north) is 5 (south).
+    expect(counts[5]).toBeGreaterThan(counts[0])
+    expect(counts[5]).toBeGreaterThan(counts[3])
+    // A sea neighbor draws the river: with the sea one step away, exits toward it dominate.
+    const seaDirections = HEX_DIRECTIONS.filter((d) => isSeaAt(COAST_SEED, neighborInDirection(ORIGIN, d)))
+    const toSea: Record<number, number> = {}
+    for (let i = 0; i < 2000; i++) {
+      const exit = pickRiverExit({ ...base, worldSeed: COAST_SEED }, 'Grassland', [], seededRng(i))!
+      toSea[exit] = (toSea[exit] ?? 0) + 1
+    }
+    const seaShare = seaDirections.reduce((n, d) => n + (toSea[d] ?? 0), 0) / 2000
+    expect(seaShare).toBeGreaterThan(seaDirections.length / 6)
   })
 })
 
@@ -113,28 +314,6 @@ describe('settlementNameColumnFor', () => {
     expect(settlementNameColumnFor('Town')).toBe('Town')
     expect(settlementNameColumnFor('City')).toBe('City/Metropolis')
     expect(settlementNameColumnFor('Metropolis')).toBe('City/Metropolis')
-  })
-})
-
-describe('rollNextTerrain', () => {
-  it('steps +1 from current terrain on a 2-3 roll', () => {
-    const rng = scripted([forDieResult(2, 6), forDieResult(1, 6)]) // 2d6 = 3
-    expect(rollNextTerrain('Grassland', rng)).toBe('Forest/jungle')
-  })
-
-  it('stays the same on a 4-8 roll', () => {
-    const rng = scripted([forDieResult(3, 6), forDieResult(3, 6)]) // 2d6 = 6
-    expect(rollNextTerrain('Ocean', rng)).toBe('Ocean')
-  })
-
-  it('rerolls fresh on a 12', () => {
-    const rng = scripted([
-      forDieResult(6, 6),
-      forDieResult(6, 6), // 2d6 = 12 -> reroll
-      forDieResult(1, 6),
-      forDieResult(1, 6), // fresh 2d6 roll = 2 -> Desert/arctic
-    ])
-    expect(rollNextTerrain('Mountain', rng)).toBe('Desert/arctic')
   })
 })
 
@@ -250,30 +429,5 @@ describe('rollPointOfInterest', () => {
     expect(poi?.location).toBe('Tower')
     expect(poi?.siteKind).toBe('tower')
     expect(poi?.forcedType).toBeUndefined()
-  })
-})
-
-describe('generateStartingHexDetails / generateNextHexDetails', () => {
-  it('starting hex uses the supplied terrain and rolls danger + poi', () => {
-    const rng = scripted([
-      forDieResult(1, 6), // danger d6 -> Safe
-      forDieResult(2, 6), // poi check fails
-    ])
-    const hex = generateStartingHexDetails('Grassland', rng)
-    expect(hex.terrain).toBe('Grassland')
-    expect(hex.danger).toBe('Safe')
-    expect(hex.poi).toBeUndefined()
-  })
-
-  it('next hex derives terrain from current terrain', () => {
-    const rng = scripted([
-      forDieResult(3, 6),
-      forDieResult(3, 6), // 2d6 = 6 -> same terrain
-      forDieResult(6, 6), // danger -> Deadly
-      forDieResult(2, 6), // poi check fails
-    ])
-    const hex = generateNextHexDetails('Swamp', rng)
-    expect(hex.terrain).toBe('Swamp')
-    expect(hex.danger).toBe('Deadly')
   })
 })

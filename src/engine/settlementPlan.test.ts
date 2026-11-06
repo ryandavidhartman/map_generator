@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { directionAngle } from '../hexgrid/hexMath'
 import { computeSettlementPlan, waterForHex, type Pt, type SettlementPlanInput } from './settlementPlan'
+import { nearestOnPolylines } from './riverCourse'
 import { generateSettlement } from './generateSettlement'
 import type { SettlementType } from '../data/settlementTables'
 
@@ -216,25 +218,31 @@ describe('computeSettlementPlan', () => {
   })
 
   it('splits a river town along its banks, keeps blocks out of the river, and bridges it', () => {
+    // The full river invariants live in settlementRiver.test.ts; this keeps the old headline
+    // checks on the real-edge river (punch-list 1b): a through river from the north out to the
+    // south, bridged, blocks on one bank or the other.
     for (const type of TYPES) {
       for (const seed of SEEDS) {
-        const angle = (seed * 0.7) % (Math.PI * 2)
-        const plan = computeSettlementPlan({ ...inputFor(seed, type), water: { kind: 'river', angle } })
+        const plan = computeSettlementPlan({ ...inputFor(seed, type), water: { kind: 'river', entries: [2], exit: 5 } })
         expect(plan.water?.kind).toBe('river')
         if (plan.water?.kind !== 'river') continue
+        expect(plan.water.course).toBe('through')
         expect(plan.water.bridges.length).toBeGreaterThan(0)
         // Every bridge is part of the main-road network.
         const key = (p: Pt) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`
         const mainKeys = new Set(plan.mainRoads.flatMap(([a, b]) => [key(a), key(b)]))
         expect(plan.water.bridges.some(([a, b]) => mainKeys.has(key(a)) && mainKeys.has(key(b)))).toBe(true)
-        // No block straddles the river: each block lies entirely on one bank.
-        const n = { x: -Math.sin(angle), y: Math.cos(angle) }
-        const [a, b] = plan.water.bridges[0]
-        const mid = ((a.x + b.x) / 2) * n.x + ((a.y + b.y) / 2) * n.y
+        // No block straddles the river: every corner of a block lies on the same bank.
+        const arms = plan.water.arms
+        const bank = (p: Pt) => {
+          const near = nearestOnPolylines(p, arms)
+          return Math.sign(near.tangent.x * (p.y - near.point.y) - near.tangent.y * (p.x - near.point.x))
+        }
         for (const block of plan.blocks) {
-          const sides = new Set(block.cell.map((p) => Math.sign(Math.round((p.x * n.x + p.y * n.y - mid) * 1000))))
+          const sides = new Set(block.cell.map(bank))
           sides.delete(0)
           expect(sides.size).toBeLessThanOrEqual(1)
+          for (const p of block.cell) expect(nearestOnPolylines(p, arms).distance).toBeGreaterThanOrEqual(plan.water.halfWidth - 1e-6)
         }
       }
     }
@@ -248,7 +256,7 @@ describe('computeSettlementPlan', () => {
   it('builds suburbs along the roads outside some gates — never inside the wall, in water, or in villages', () => {
     for (const type of TYPES) {
       for (const seed of SEEDS) {
-        for (const water of [null, { kind: 'coast' as const, angle: 1 }, { kind: 'river' as const, angle: 2 }]) {
+        for (const water of [null, { kind: 'coast' as const, angle: 1 }, { kind: 'river' as const, entries: [2 as const], exit: 0 as const }]) {
           const plan = computeSettlementPlan({ ...inputFor(seed, type), water })
           if (type === 'Village') {
             expect(plan.suburbs).toHaveLength(0)
@@ -259,7 +267,7 @@ describe('computeSettlementPlan', () => {
             const c = house.poly.reduce((acc, p) => ({ x: acc.x + p.x / 4, y: acc.y + p.y / 4 }), { x: 0, y: 0 })
             expect(insideConvex(c, plan.outline)).toBe(false)
             if (water?.kind === 'coast') {
-              const u = { x: Math.cos(1), y: Math.sin(1) }
+              const u = { x: Math.cos(water.angle!), y: Math.sin(water.angle!) }
               const shore = Math.max(...plan.outline.map((p) => p.x * u.x + p.y * u.y))
               expect(c.x * u.x + c.y * u.y).toBeLessThan(shore)
             }
@@ -271,26 +279,26 @@ describe('computeSettlementPlan', () => {
 })
 
 describe('waterForHex', () => {
-  const ne = -Math.PI / 6
-  it('puts a coast toward Ocean neighbors, whatever the hex itself is', () => {
-    expect(waterForHex('Grassland', [{ terrain: 'Ocean', angle: ne }])).toEqual({ kind: 'coast', angle: expect.closeTo(ne, 9) })
-    expect(waterForHex('River/coast', [{ terrain: 'Ocean', angle: ne }, { terrain: 'Forest/jungle', angle: 2 }])?.kind).toBe('coast')
-    const twoSeas = waterForHex('Ocean', [{ terrain: 'Ocean', angle: 0 }, { terrain: 'Ocean', angle: Math.PI / 2 }])
-    expect(twoSeas?.angle).toBeCloseTo(Math.PI / 4, 9)
+  // The full rules table lives in settlementWater.test.ts; this is the short version.
+  it('puts a coast toward the sea sides, whatever the hex itself is', () => {
+    expect(waterForHex({ terrain: 'Grassland', seaSides: [1], pick: 0 })).toEqual({ kind: 'coast', angle: expect.closeTo(directionAngle(1), 9) })
+    expect(waterForHex({ terrain: 'Coast', seaSides: [1], river: { exit: null, entries: [3] }, pick: 0 })?.kind).toBe('coast')
+    const twoSeas = waterForHex({ terrain: 'Ocean', seaSides: [0, 5], pick: 0 })
+    expect(twoSeas?.kind === 'coast' ? twoSeas.angle : NaN).toBeCloseTo((directionAngle(0) + directionAngle(5)) / 2, 9)
   })
 
-  it('gives an Ocean hex with no known Ocean neighbor a coast on an unknown side', () => {
-    expect(waterForHex('Ocean', [])).toEqual({ kind: 'coast' })
+  it('gives an Ocean hex with no sea around it a coast on an unknown side', () => {
+    expect(waterForHex({ terrain: 'Ocean', seaSides: [], pick: 0.5 })).toEqual({ kind: 'coast' })
   })
 
-  it('runs a river through a River/coast hex, toward a River/coast neighbor when there is one', () => {
-    expect(waterForHex('River/coast', [{ terrain: 'River/coast', angle: 1 }])).toEqual({ kind: 'river', angle: 1 })
-    expect(waterForHex('River/coast', [{ terrain: 'Mountain', angle: 1 }])).toEqual({ kind: 'river' })
+  it('passes the hex\'s river edges through when there is no sea', () => {
+    expect(waterForHex({ terrain: 'Grassland', seaSides: [], river: { exit: 5, entries: [2] }, pick: 0 })).toEqual({ kind: 'river', entries: [2], exit: 5 })
+    expect(waterForHex({ terrain: 'Swamp', seaSides: [], river: { exit: null, entries: [] }, pick: 0 })).toEqual({ kind: 'river', entries: [], exit: null })
   })
 
-  it('gives dry hexes with no Ocean neighbor no water', () => {
-    for (const terrain of ['Grassland', 'Forest/jungle', 'Mountain', 'Desert/arctic', 'Swamp'] as const) {
-      expect(waterForHex(terrain, [{ terrain: 'River/coast', angle: 0 }, { terrain: 'Grassland', angle: 1 }])).toBeNull()
+  it('gives hexes with no sea and no river no water, Coast included', () => {
+    for (const terrain of ['Grassland', 'Forest/jungle', 'Mountain', 'Desert/arctic', 'Swamp', 'Hills', 'Coast'] as const) {
+      expect(waterForHex({ terrain, seaSides: [], pick: 0 })).toBeNull()
     }
   })
 })

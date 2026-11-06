@@ -16,18 +16,24 @@
 // Coordinates are abstract units (~10 ft), y grows downward, town centered on (0, 0).
 
 import { Delaunay } from 'd3-delaunay'
+import { pickWeighted } from './dice'
 import { seededRngFromNumber } from './caveRenderShapes'
 import { seedForString } from './towerPlan'
 import type { DistrictType, SettlementType } from '../data/settlementTables'
 import type { Terrain } from '../data/tables'
-import { axialToPixel, hexId, neighborsOf, type AxialCoord } from '../hexgrid/hexMath'
+import { directionAngle, HEX_DIRECTIONS, hexId, neighborInDirection, type AxialCoord, type HexDirection } from '../hexgrid/hexMath'
+import { isSeaAt } from './worldFormula'
+import { riverEntriesFor, type RiverData } from './rivers'
+import { distanceToPolylines, nearestOnPolylines, riverCourseInHex, type RiverCourseKind } from './riverCourse'
 
 export type Pt = { x: number; y: number }
 
-// What water the settlement's hex calls for (see waterForHex). `angle` is the direction of the
-// sea, or the river's downstream direction, in map coordinates (radians, y down); left out when
-// no revealed neighbor says which way, in which case the plan picks one from its seed.
-export type SettlementWaterInput = { kind: 'coast' | 'river'; angle?: number }
+// What water the settlement's hex calls for (see waterForHex). Coast: `angle` is the direction
+// of the sea in map coordinates (radians, y down); left out when nothing says which way (an
+// Ocean hex with no sea around it), in which case the plan picks one from its seed. River
+// (punch-list item 1b): the hex's real river edges — where it comes in and where it leaves
+// (null when it ends on this hex).
+export type SettlementWaterInput = { kind: 'coast'; angle?: number } | { kind: 'river'; entries: HexDirection[]; exit: HexDirection | null }
 
 export type SettlementPlanInput = {
   settlementType: SettlementType
@@ -57,7 +63,25 @@ export type StreetPattern = 'organic' | 'grid' | 'gridCore' | 'oldTown'
 
 export type PlanWater =
   | { kind: 'coast'; angle: number; sea: Pt[]; shore: Pt[]; piers: [Pt, Pt][] }
-  | { kind: 'river'; angle: number; river: Pt[]; bridges: [Pt, Pt][] }
+  | {
+      kind: 'river'
+      // The edges drawn (see riverCourse.ts for how degenerate inputs are normalized).
+      entries: HexDirection[]
+      exit: HexDirection | null
+      course: RiverCourseKind
+      // Downstream direction (radians, y down) for labels: toward the exit, or inward from the
+      // entry when the river ends in town.
+      angle: number
+      // One polyline per arm, running from the map's border to the border (through), or between
+      // the border and the town centre (spring/ending). Drawn as a round-capped stroke of
+      // 2 × halfWidth (user decision C: constant width, no wobble).
+      arms: Pt[][]
+      halfWidth: number
+      // The notional hex's apothem (= the map's half-size): its edge midpoints are where the
+      // arms cross into the neighboring hexes.
+      hexApothem: number
+      bridges: [Pt, Pt][]
+    }
 
 export type SettlementPlan = {
   shape: OutlineShape
@@ -146,14 +170,6 @@ const PATTERN_ODDS: Record<SettlementType, [StreetPattern, number][]> = {
   Metropolis: [['organic', 0.2], ['grid', 0.15], ['gridCore', 0.35], ['oldTown', 0.3]],
 }
 
-function pickWeighted<T>(options: [T, number][], rng: () => number): T {
-  let roll = rng() * options.reduce((sum, [, w]) => sum + w, 0)
-  for (const [value, weight] of options) {
-    roll -= weight
-    if (roll < 0) return value
-  }
-  return options[options.length - 1][0]
-}
 
 // How many gates get a suburb, and how far it runs along the road (in units).
 const SUBURB_GATES: Record<SettlementType, [number, number]> = { Village: [0, 0], Town: [1, 2], City: [2, 3], Metropolis: [4, 4] }
@@ -165,40 +181,62 @@ const FIELD_COLORS = ['#9bb36a', '#b5c27a', '#c9bf7f', '#86a35e', '#a8b872']
 
 // --- water from the hex ------------------------------------------------------------------
 
-// User rule (2026-10-31): water must make sense for the hex the settlement is in. A coast faces
-// the Ocean neighbors; a River/coast hex with no Ocean neighbor gets a river flowing toward a
-// watery neighbor; a hex with no water and no Ocean neighbor gets none. `neighbors` are the
-// revealed neighboring hexes with their direction from this hex on the overland map.
-export function waterForHex(terrain: Terrain, neighbors: { terrain: Terrain; angle: number }[]): SettlementWaterInput | null {
-  const meanAngle = (angles: number[]) =>
-    Math.atan2(
-      angles.reduce((s2, a) => s2 + Math.sin(a), 0),
-      angles.reduce((s2, a) => s2 + Math.cos(a), 0),
-    )
-  const ocean = neighbors.filter((n) => n.terrain === 'Ocean').map((n) => n.angle)
-  if (ocean.length > 0) return { kind: 'coast', angle: meanAngle(ocean) }
-  if (terrain === 'Ocean') return { kind: 'coast' }
-  if (terrain === 'River/coast') {
-    const river = neighbors.filter((n) => n.terrain === 'River/coast').map((n) => n.angle)
-    return river.length > 0 ? { kind: 'river', angle: river[0] } : { kind: 'river' }
+// User rule (2026-10-31): water must make sense for the hex the settlement is in. Since
+// punch-list item 1a the sea is the world formula's sea on all six sides, revealed or not, plus
+// any revealed Ocean neighbor (so a hex hand-edited to Ocean still gives a neighboring town a
+// coast); a hex with no sea next to it but a river gets a river; anything else gets no water.
+//
+// Isthmus fix (1a): when the sea sides cancel out when averaged (sea on opposite sides, or on
+// every other side — including an Ocean hex with sea all around), the coast faces one real sea
+// side, picked from the seed so it's the same every visit.
+//
+// The river passes its real edges on (punch-list item 1b): the plan draws it from the entry
+// edge(s) to the exit edge, or to/from the town's middle when it starts or ends here. 1c adds
+// the water combinations (river meeting sea, merges, lakeshores).
+export type HexWaterInput = {
+  terrain: Terrain
+  // Directions with sea on the other side of the edge.
+  seaSides: HexDirection[]
+  river?: { exit: HexDirection | null; entries: HexDirection[] }
+  // A number in [0, 1) from the seed, used to pick a sea side when the sides cancel out.
+  pick: number
+}
+
+export function waterForHex(input: HexWaterInput): SettlementWaterInput | null {
+  const { terrain, seaSides, river, pick } = input
+  if (seaSides.length > 0) {
+    const sx = seaSides.reduce((sum, d) => sum + Math.cos(directionAngle(d)), 0)
+    const sy = seaSides.reduce((sum, d) => sum + Math.sin(directionAngle(d)), 0)
+    if (Math.hypot(sx, sy) > 0.1) return { kind: 'coast', angle: Math.atan2(sy, sx) }
+    const chosen = seaSides[Math.min(seaSides.length - 1, Math.floor(pick * seaSides.length))]
+    return { kind: 'coast', angle: directionAngle(chosen) }
   }
+  if (terrain === 'Ocean') return { kind: 'coast' }
+  if (river) return { kind: 'river', entries: river.entries, exit: river.exit }
   return null
 }
 
-// Feeds waterForHex from the overland map: the hex's own terrain plus each revealed neighbor
-// with its direction from this hex (radians, y down — the same frame as the settlement plan, so a
-// neighbor to the screen's north-east puts the sea on the town map's north-east). Unrevealed
-// neighbors don't count. Neighbors are visited in neighborsOf order, which decides which
-// River/coast neighbor a river heads toward when there are several.
-export function waterForMapHex(hex: AxialCoord & { terrain: Terrain }, hexes: Record<string, { terrain: Terrain }>): SettlementWaterInput | null {
-  const center = axialToPixel(hex, 1)
-  const neighbors = neighborsOf(hex).flatMap((coord) => {
-    const neighbor = hexes[hexId(coord)]
-    if (!neighbor) return []
-    const p = axialToPixel(coord, 1)
-    return [{ terrain: neighbor.terrain, angle: Math.atan2(p.y - center.y, p.x - center.x) }]
+// Feeds waterForHex from the overland map: the hex's terrain, the sea on each of its six sides
+// (the world formula's, or a revealed Ocean hex), and its river (entries worked out from the
+// revealed neighbors' exits). Directions are screen directions (radians, y down — the same frame
+// as the settlement plan, so sea to the screen's north-east puts the sea on the town map's
+// north-east).
+export function waterForMapHex(
+  hex: AxialCoord & { terrain: Terrain; river?: RiverData },
+  hexes: Record<string, { q: number; r: number; terrain: Terrain; river?: RiverData }>,
+  worldSeed: number,
+): SettlementWaterInput | null {
+  const seaSides = HEX_DIRECTIONS.filter((direction) => {
+    const coord = neighborInDirection(hex, direction)
+    const revealed = hexes[hexId(coord)]
+    return revealed ? revealed.terrain === 'Ocean' : isSeaAt(worldSeed, coord)
   })
-  return waterForHex(hex.terrain, neighbors)
+  // Inflows are read from the neighbors' exits for every hex, so a hex revealed before a river
+  // reached it (no river record of its own) still gets its river.
+  const entries = riverEntriesFor(hex, hexes)
+  const river = hex.river || entries.length > 0 ? { exit: hex.river?.exit ?? null, entries } : undefined
+  const pick = seededRngFromNumber(seedForString(`${worldSeed}|${hexId(hex)}|coast`))()
+  return waterForHex({ terrain: hex.terrain, seaSides, river, pick })
 }
 
 // --- small geometry helpers -------------------------------------------------------------
@@ -621,6 +659,188 @@ function shrink(poly: Pt[], by: number): Pt[] {
   return insetConvex(poly, poly.map(() => by))
 }
 
+
+// --- rivers (punch-list item 1b) ----------------------------------------------------------
+
+// The river as the plan sees it: the arms' full polylines (hex course + extension to the map's
+// border, with the meander applied) and the arm ends that lie inside the town (a spring's
+// source, an ending river's end), each with the direction "ahead" of that end.
+type RiverShape = {
+  arms: Pt[][]
+  halfWidth: number
+  ends: { at: Pt; ahead: Pt }[]
+  distance: (p: Pt) => number
+}
+
+// Extends each in-hex arm radially past its edge midpoint to the map's border, then bends it
+// with a gentle meander that is zero inside the town and zero at the hex edge midpoints (so the
+// river still crosses into the neighboring hexes exactly where the overland map says), rising
+// between the town and the hex edge and again beyond it. The meander's randomness comes from its
+// own derived rng, leaving the plan's main rng stream alone.
+function riverShape(
+  course: ReturnType<typeof riverCourseInHex>,
+  apothem: number,
+  townRadius: number,
+  halfWidth: number,
+  riverRng: () => number,
+): RiverShape {
+  const noise = smoothNoise(riverRng)
+  const reach = apothem * 2.2
+  const extensionStep = 1
+  const amplitude = Math.min(3, 0.12 * Math.max(0, apothem - townRadius))
+  const envelope = (d: number) => {
+    if (d <= townRadius) return 0
+    if (d <= apothem) return Math.sin((Math.PI * (d - townRadius)) / Math.max(1e-6, apothem - townRadius))
+    return Math.min(1, (d - apothem) / (0.3 * apothem))
+  }
+  const ends: RiverShape['ends'] = []
+  const arms = course.arms.map((arm, armIndex) => {
+    const extended: Pt[] = []
+    const first = arm[0]
+    const last = arm[arm.length - 1]
+    const onEdge = (p: Pt) => Math.abs(Math.hypot(p.x, p.y) - apothem) < 1e-6
+    // Leading extension (an entry edge): from far out toward the midpoint.
+    if (onEdge(first)) {
+      const u = { x: first.x / apothem, y: first.y / apothem }
+      for (let d = reach; d > apothem; d -= extensionStep) extended.push({ x: u.x * d, y: u.y * d })
+    }
+    extended.push(...arm)
+    if (onEdge(last)) {
+      const u = { x: last.x / apothem, y: last.y / apothem }
+      for (let d = apothem + extensionStep; d <= reach; d += extensionStep) extended.push({ x: u.x * d, y: u.y * d })
+    }
+    // Meander: offset each point along the local normal by noise × envelope(distance from centre).
+    let along = 0
+    const out = extended.map((p, i) => {
+      if (i > 0) along += dist(extended[i - 1], p)
+      const prev = extended[Math.max(0, i - 1)]
+      const next = extended[Math.min(extended.length - 1, i + 1)]
+      const tx = next.x - prev.x
+      const ty = next.y - prev.y
+      const len = Math.hypot(tx, ty) || 1
+      const offset = amplitude * noise(along * 0.25 + armIndex * 37) * envelope(Math.hypot(p.x, p.y))
+      return { x: p.x + (-ty / len) * offset, y: p.y + (tx / len) * offset }
+    })
+    if (!onEdge(first)) ends.push({ at: out[0], ahead: unit(out[0], out[1]) })
+    if (!onEdge(last)) ends.push({ at: out[out.length - 1], ahead: unit(out[out.length - 1], out[out.length - 2]) })
+    return out
+  })
+  return { arms, halfWidth, ends, distance: (p) => distanceToPolylines(p, arms) }
+}
+
+// Unit vector from `from` pointing away from `toward` (i.e. the direction "ahead" of an arm end).
+function unit(from: Pt, toward: Pt): Pt {
+  const dx = from.x - toward.x
+  const dy = from.y - toward.y
+  const len = Math.hypot(dx, dy) || 1
+  return { x: dx / len, y: dy / len }
+}
+
+// Cuts one convex cell around the river band (user decision B: per-cell local cuts, not
+// slicing at every sampled point). The band inside the cell is sampled (bank points that fall in
+// the cell, plus cell-edge points that fall in the band); in the frame of the nearest centreline
+// point (tangent t, normal n) the cell keeps the part beyond the band's extent on each side of n,
+// and — where an arm ends inside the cell — the strip ahead of that end. Every piece is a
+// half-plane intersection of the cell, so it stays convex and can never overlap the water; at a
+// bend the sagitta is lost as land instead. Returns [cell] untouched when the band misses it.
+const CUT_MARGIN = 0.15
+function cutCellByRiver(cell: Pt[], river: RiverShape): Pt[][] {
+  const w = river.halfWidth
+  const c = centroid(cell)
+  const reach = Math.max(...cell.map((v) => dist(v, c)))
+  if (river.distance(c) > reach + w + CUT_MARGIN) return [cell]
+  const samples: Pt[] = []
+  for (let i = 0; i < cell.length; i++) {
+    const a = cell[i]
+    const b = cell[(i + 1) % cell.length]
+    const steps = Math.max(1, Math.ceil(dist(a, b) / 0.2))
+    for (let k = 0; k <= steps; k++) {
+      const p = { x: a.x + ((b.x - a.x) * k) / steps, y: a.y + ((b.y - a.y) * k) / steps }
+      // Detect a little beyond the band, so a bank that grazes the cell between two samples
+      // still counts (the piece is then trimmed by a sliver rather than overlapping the water).
+      if (river.distance(p) < w + 2 * CUT_MARGIN) samples.push(p)
+    }
+  }
+  for (const arm of river.arms) {
+    for (let i = 0; i < arm.length; i++) {
+      const prev = arm[Math.max(0, i - 1)]
+      const next = arm[Math.min(arm.length - 1, i + 1)]
+      const tx = next.x - prev.x
+      const ty = next.y - prev.y
+      const len = Math.hypot(tx, ty) || 1
+      for (const side of [1, -1]) {
+        const q = { x: arm[i].x + (-ty / len) * w * side, y: arm[i].y + (tx / len) * w * side }
+        if (pointInConvex(q, cell)) samples.push(q)
+      }
+      // Round caps at the arm's ends.
+      if (i === 0 || i === arm.length - 1) {
+        for (let k = 0; k < 12; k++) {
+          const angle = (k / 12) * Math.PI * 2
+          const q = { x: arm[i].x + Math.cos(angle) * w, y: arm[i].y + Math.sin(angle) * w }
+          if (pointInConvex(q, cell)) samples.push(q)
+        }
+      }
+    }
+  }
+  if (samples.length === 0) return [cell]
+  const near = nearestOnPolylines(c, river.arms)
+  const n = { x: -near.tangent.y, y: near.tangent.x }
+  const dot = (p: Pt, d: Pt) => p.x * d.x + p.y * d.y
+  const hiN = Math.max(...samples.map((p) => dot(p, n)))
+  const loN = Math.min(...samples.map((p) => dot(p, n)))
+  // clipHalfPlane keeps cross(d, p - a) / |d| >= offset; with d = (n.y, -n.x) that is n·(p - a).
+  const beyond = (poly: Pt[], dir: Pt, limit: number) => clipHalfPlane(poly, { x: dir.x * limit, y: dir.y * limit }, { x: dir.y, y: -dir.x }, 0)
+  const pieces: Pt[][] = [beyond(cell, n, hiN + CUT_MARGIN), beyond(cell, { x: -n.x, y: -n.y }, -(loN - CUT_MARGIN))]
+  for (const end of river.ends) {
+    if (!pointInConvex(end.at, cell) && distanceToEdges(end.at, cell) > w + CUT_MARGIN) continue
+    const u = end.ahead
+    const hiT = Math.max(...samples.map((p) => dot(p, u)))
+    let strip = beyond(cell, u, hiT + CUT_MARGIN)
+    strip = beyond(strip, { x: -n.x, y: -n.y }, -(hiN + CUT_MARGIN))
+    strip = beyond(strip, n, loN - CUT_MARGIN)
+    pieces.push(strip)
+  }
+  return pieces.filter((piece) => piece.length >= 3 && Math.abs(area(piece)) > 2)
+}
+
+// After cutting, a cut point that lands on a neighbouring cell's edge is inserted into that
+// neighbour (a collinear vertex keeps it convex), so both cells describe their shared edge with
+// the same vertices and the street graph stays consistent (no T-junctions).
+function weldCells(cells: Pt[][], cutKeys: Set<string>): Pt[][] {
+  const cutPoints = new Map<string, Pt>()
+  for (const cell of cells) for (const v of cell) if (cutKeys.has(keyOf(v))) cutPoints.set(keyOf(v), v)
+  if (cutPoints.size === 0) return cells
+  const points = [...cutPoints.entries()].map(([key, p]) => ({ key, p }))
+  return cells.map((cell) => {
+    const keys = cell.map(keyOf)
+    const out: Pt[] = []
+    for (let i = 0; i < cell.length; i++) {
+      const a = cell[i]
+      const b = cell[(i + 1) % cell.length]
+      const ka = keys[i]
+      const kb = keys[(i + 1) % cell.length]
+      out.push(a)
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+      const len2 = dx * dx + dy * dy
+      if (len2 < 1e-12) continue
+      const tolerance = 1e-6 * Math.sqrt(len2)
+      const inserts: { t: number; p: Pt }[] = []
+      for (const { key, p } of points) {
+        const cross = dx * (p.y - a.y) - dy * (p.x - a.x)
+        if (cross > tolerance || cross < -tolerance) continue
+        const t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2
+        if (t <= 1e-9 || t >= 1 - 1e-9) continue
+        if (key === ka || key === kb) continue
+        inserts.push({ t, p })
+      }
+      inserts.sort((u, v) => u.t - v.t)
+      for (const { p } of inserts) out.push(p)
+    }
+    return out
+  })
+}
+
 // --- the plan ---------------------------------------------------------------------------
 
 export function computeSettlementPlan(input: SettlementPlanInput): SettlementPlan {
@@ -638,15 +858,19 @@ export function computeSettlementPlan(input: SettlementPlanInput): SettlementPla
     shape === 'angular' ? angularOutline(radius, rng) : shape === 'elongated' ? elongatedOutline(radius, axis, rng) : roundOutline(radius, rng)
 
   // Water (see waterForHex). Coast: a straight cut through the outline at distance `seaCut`
-  // toward the sea — the town keeps the land side, still convex. River: a straight band of
-  // half-width `riverHalf` at offset `riverOffset` from the center, along `riverDir`; blocks are
-  // split along its banks.
+  // toward the sea — the town keeps the land side, still convex. River (punch-list item 1b): the
+  // hex's river course (riverCourse.ts), a band of half-width `riverHalf` that the blocks are cut
+  // around (cutCellByRiver).
+  //
+  // The main rng stream is drawn from in exactly the order the pre-1b code did — the coast
+  // angle only when a coast has none, then seaCut, then riverOffset — so coast-only and
+  // no-water towns come out byte-identical (pinned by settlementPlanBaseline.test.ts).
+  // riverOffset is still drawn for that reason; it's used only as the straight river's seeded
+  // ±0.15R offset (user decision A), and is otherwise unused.
   const waterKind = input.water?.kind ?? null
-  const waterAngle = input.water ? (input.water.angle ?? rng() * Math.PI * 2) : 0
+  const waterAngle = input.water?.kind === 'coast' ? (input.water.angle ?? rng() * Math.PI * 2) : 0
   const seaDir = { x: Math.cos(waterAngle), y: Math.sin(waterAngle) }
   const seaCut = radius * (0.3 + rng() * 0.25)
-  const riverDir = seaDir
-  const riverNormal = { x: -riverDir.y, y: riverDir.x }
   const riverOffset = radius * (rng() - 0.5) * 0.3
   const riverHalf = RIVER_HALF_WIDTH[type]
   const dot = (p: Pt, d: Pt) => p.x * d.x + p.y * d.y
@@ -654,18 +878,27 @@ export function computeSettlementPlan(input: SettlementPlanInput): SettlementPla
     outline = clipHalfPlane(outline, { x: seaDir.x * seaCut, y: seaDir.y * seaCut }, { x: -seaDir.y, y: seaDir.x }, 0)
   }
   const onSeaLine = (p: Pt) => waterKind === 'coast' && Math.abs(dot(p, seaDir) - seaCut) < 1e-3
-  const riverDistance = (p: Pt) => Math.abs(dot(p, riverNormal) - riverOffset)
-  const inRiver = (p: Pt, margin: number) => waterKind === 'river' && riverDistance(p) < riverHalf + margin
+
+  // The square map's half-size is also the notional hex's apothem (riverCourse.ts).
+  const extent = Math.max(...outline.map((p) => Math.hypot(p.x, p.y))) + radius * 0.5
+  let river: RiverShape | null = null
+  let course: ReturnType<typeof riverCourseInHex> | null = null
+  if (input.water?.kind === 'river') {
+    const riverRng = seededRngFromNumber(seedForString(`${input.seedSource}|river`))
+    const fallbackExit = HEX_DIRECTIONS[Math.floor(riverRng() * 6)]
+    course = riverCourseInHex(input.water.entries, input.water.exit, extent, fallbackExit, riverOffset)
+    river = riverShape(course, extent, Math.max(...outline.map((p) => Math.hypot(p.x, p.y))) + 1, riverHalf, riverRng)
+  }
+  const riverDistance = (p: Pt) => (river ? river.distance(p) : Infinity)
+  const inRiver = (p: Pt, margin: number) => river !== null && riverDistance(p) < riverHalf + margin
 
   const { sites, fixed } = blockSites(pattern, blockCount, outline, radius, axis, rng)
   let cells = relaxedBlocks(sites, fixed, outline, radius).filter((c) => c.length >= 3)
-  if (waterKind === 'river') {
-    const bankA = { x: riverNormal.x * (riverOffset + riverHalf), y: riverNormal.y * (riverOffset + riverHalf) }
-    const bankB = { x: riverNormal.x * (riverOffset - riverHalf), y: riverNormal.y * (riverOffset - riverHalf) }
-    cells = cells.flatMap((cell) => [
-      clipHalfPlane(cell, bankA, riverDir, 0),
-      clipHalfPlane(cell, bankB, { x: -riverDir.x, y: -riverDir.y }, 0),
-    ])
+  if (river) {
+    const originalKeys = new Set(cells.flatMap((cell) => cell.map(keyOf)))
+    cells = cells.flatMap((cell) => cutCellByRiver(cell, river!))
+    const cutKeys = new Set(cells.flatMap((cell) => cell.map(keyOf)).filter((k) => !originalKeys.has(k)))
+    cells = weldCells(cells, cutKeys)
   }
   cells = cells.filter((c) => c.length >= 3 && Math.abs(area(c)) > 2)
   const centers = cells.map(centroid)
@@ -696,28 +929,50 @@ export function computeSettlementPlan(input: SettlementPlanInput): SettlementPla
     .map(keyOf)
     .reduce((best, k) => (Math.hypot(graph.points.get(k)!.x, graph.points.get(k)!.y) < Math.hypot(graph.points.get(best)!.x, graph.points.get(best)!.y) ? k : best))
 
-  // Bridges: main roads cross the river at 1-2 points, bank vertex to the facing bank vertex.
+  // Bridges: main roads cross the river at bank vertex → facing bank vertex. Spots along the
+  // in-town part of each arm: a through river gets 1 (Village/Town) or 2 (City/Metropolis),
+  // a spring or ending river 1 — one set per arm, so every arm of a degenerate multi-entry river
+  // gets its crossing too.
   const bridges: [Pt, Pt][] = []
-  if (waterKind === 'river') {
-    const bankKeys = (side: 1 | -1) =>
-      [...graph.points.keys()].filter((k) => Math.abs(dot(graph.points.get(k)!, riverNormal) - (riverOffset + side * riverHalf)) < 1e-3)
-    const sideA = bankKeys(1)
-    const sideB = bankKeys(-1)
-    const spots = type === 'Village' || type === 'Town' ? [0] : [-radius * 0.35, radius * 0.35]
-    for (const t of spots) {
-      const target = {
-        x: riverNormal.x * (riverOffset + riverHalf) + riverDir.x * t,
-        y: riverNormal.y * (riverOffset + riverHalf) + riverDir.y * t,
+  if (river) {
+    const bankKeys = [...graph.points.keys()].filter((k) => {
+      const d = riverDistance(graph.points.get(k)!)
+      return d >= riverHalf - 1e-6 && d <= riverHalf + 1.2
+    })
+    for (const arm of river.arms) {
+      const inTown = arm.filter((p) => pointInConvex(p, outline) && distanceToEdges(p, outline) > riverHalf + 2)
+      if (inTown.length < 2) continue
+      // Each wanted bridge tries a few spots along the arm, nearest the ideal first — a spot can
+      // fail where there's no land piece to land on (inside a tight U-bend).
+      const wanted = course!.kind === 'through' && type !== 'Village' && type !== 'Town' ? [[0.3, 0.2, 0.4, 0.1], [0.7, 0.8, 0.6, 0.9]] : [[0.5, 0.35, 0.65, 0.2, 0.8]]
+      for (const options of wanted) {
+        let placed = false
+        for (const f of options) {
+        if (placed) break
+        const spot = inTown[Math.min(inTown.length - 1, Math.floor(f * inTown.length))]
+        const near = nearestOnPolylines(spot, river.arms)
+        const n = { x: -near.tangent.y, y: near.tangent.x }
+        const side = (k: string) => dot({ x: graph.points.get(k)!.x - spot.x, y: graph.points.get(k)!.y - spot.y }, n)
+        const targetA = { x: spot.x + n.x * (riverHalf + 0.3), y: spot.y + n.y * (riverHalf + 0.3) }
+        const a = bankKeys.filter((k) => side(k) > 0).reduce<string | null>((best, k) => (best === null || dist(graph.points.get(k)!, targetA) < dist(graph.points.get(best)!, targetA) ? k : best), null)
+        if (!a) continue
+        const pa = graph.points.get(a)!
+        const across = { x: pa.x - 2 * side(a) * n.x, y: pa.y - 2 * side(a) * n.y }
+        const b = bankKeys.filter((k) => side(k) < 0).reduce<string | null>((best, k) => (best === null || dist(graph.points.get(k)!, across) < dist(graph.points.get(best)!, across) ? k : best), null)
+        if (!b) continue
+        const pb = graph.points.get(b)!
+        const length = dist(pa, pb)
+        if (length > riverHalf * 2 + 4) continue
+        // The bridge must actually span the water (at a U-bend two "opposite" bank vertices can
+        // sit beside the river rather than across it).
+        if (riverDistance({ x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 }) >= riverHalf) continue
+        if (bridges.some(([x, y]) => dist(x, pa) < 1e-6 && dist(y, pb) < 1e-6)) continue
+        graph.neighbors.get(a)!.push({ to: b, length })
+        graph.neighbors.get(b)!.push({ to: a, length })
+        bridges.push([pa, pb])
+        placed = true
+        }
       }
-      const a = sideA.reduce<string | null>((best, k) => (best === null || dist(graph.points.get(k)!, target) < dist(graph.points.get(best)!, target) ? k : best), null)
-      if (!a) continue
-      const across = { x: graph.points.get(a)!.x - riverNormal.x * riverHalf * 2, y: graph.points.get(a)!.y - riverNormal.y * riverHalf * 2 }
-      const b = sideB.reduce<string | null>((best, k) => (best === null || dist(graph.points.get(k)!, across) < dist(graph.points.get(best)!, across) ? k : best), null)
-      if (!b) continue
-      const length = dist(graph.points.get(a)!, graph.points.get(b)!)
-      graph.neighbors.get(a)!.push({ to: b, length })
-      graph.neighbors.get(b)!.push({ to: a, length })
-      bridges.push([graph.points.get(a)!, graph.points.get(b)!])
     }
   }
 
@@ -875,27 +1130,41 @@ export function computeSettlementPlan(input: SettlementPlanInput): SettlementPla
       const a = outline[i]
       const b = outline[(i + 1) % outline.length]
       if (onSeaLine(a) && onSeaLine(b)) continue
-      if (waterKind !== 'river') {
+      if (!river) {
         wallSegments.push([a, b])
         continue
       }
-      // Keep the parts of the edge outside the river band (plus a little room for the water gate).
-      const da = dot(a, riverNormal) - riverOffset
-      const db = dot(b, riverNormal) - riverOffset
+      // Keep the parts of the edge outside the river band (plus a little room for the water
+      // gate): walk the edge, and refine each dry/wet transition by bisection.
       const limit = riverHalf + 0.6
-      const at = (v: number) => {
-        const t = (v - da) / (db - da)
-        return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
+      const at = (t: number) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t })
+      const dry = (t: number) => riverDistance(at(t)) >= limit
+      const steps = Math.max(2, Math.ceil(dist(a, b) / 0.25))
+      const refine = (t0: number, t1: number) => {
+        // t0 and t1 differ in dryness; returns the transition parameter.
+        let lo = t0
+        let hi = t1
+        for (let i = 0; i < 12; i++) {
+          const mid = (lo + hi) / 2
+          if (dry(mid) === dry(t0)) lo = mid
+          else hi = mid
+        }
+        return (lo + hi) / 2
       }
-      const pieces: [number, number][] = [[-Infinity, -limit], [limit, Infinity]]
-      for (const [lo, hi] of pieces) {
-        const from = Math.max(Math.min(da, db), lo)
-        const to = Math.min(Math.max(da, db), hi)
-        if (to - from < 1e-6) continue
-        const p1 = Math.abs(da - db) < 1e-9 ? a : at(from)
-        const p2 = Math.abs(da - db) < 1e-9 ? b : at(to)
-        wallSegments.push(da <= db ? [p1, p2] : [p2, p1])
+      let runStart: number | null = dry(0) ? 0 : null
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps
+        const wasDry = runStart !== null
+        if (dry(t) === wasDry) continue
+        const edgeT = refine((i - 1) / steps, t)
+        if (wasDry) {
+          if (edgeT - runStart! > 1e-6) wallSegments.push([at(runStart!), at(edgeT)])
+          runStart = null
+        } else {
+          runStart = edgeT
+        }
       }
+      if (runStart !== null && 1 - runStart > 1e-6) wallSegments.push([at(runStart), at(1)])
     }
   }
 
@@ -944,7 +1213,7 @@ export function computeSettlementPlan(input: SettlementPlanInput): SettlementPla
 
   // Nothing grows in the water.
   const isWet = (p: Pt, margin: number) =>
-    (waterKind === 'coast' && dot(p, seaDir) > seaCut - margin) || (waterKind === 'river' && riverDistance(p) < riverHalf + margin + 1.5)
+    (waterKind === 'coast' && dot(p, seaDir) > seaCut - margin) || (river !== null && riverDistance(p) < riverHalf + margin + 1.5)
 
   // Suburbs: houses on both sides of the road leading out of some gates, starting just past the
   // wall, with gaps here and there.
@@ -1044,8 +1313,7 @@ export function computeSettlementPlan(input: SettlementPlanInput): SettlementPla
     return [graph.points.get(ka)!, graph.points.get(kb)!]
   })
 
-  // A square map: the town's farthest edge plus a band of countryside.
-  const extent = Math.max(...outline.map((p) => Math.hypot(p.x, p.y))) + radius * 0.5
+  // A square map: the town's farthest edge plus a band of countryside (`extent`, above).
 
   // Water shapes. Edges stay close to the straight line inside the town (within the quay gap
   // the blocks already leave) and wander more freely out in the countryside.
@@ -1078,17 +1346,20 @@ export function computeSettlementPlan(input: SettlementPlanInput): SettlementPla
         ])
       }
       water = { kind: 'coast', angle: waterAngle, sea, shore, piers }
-    } else {
-      const left: Pt[] = []
-      const right: Pt[] = []
-      for (let t = -reach; t <= reach; t += 0.8) {
-        const wander = noise(t * 0.35) * 4 * freedom(t)
-        const width = riverHalf * (1 + 0.08 * noise(t + 17))
-        const c = { x: riverNormal.x * (riverOffset + wander) + riverDir.x * t, y: riverNormal.y * (riverOffset + wander) + riverDir.y * t }
-        left.push({ x: c.x + riverNormal.x * width, y: c.y + riverNormal.y * width })
-        right.push({ x: c.x - riverNormal.x * width, y: c.y - riverNormal.y * width })
+    } else if (river && course) {
+      const angle =
+        course.exit !== null ? directionAngle(course.exit) : course.entries.length ? directionAngle(course.entries[0]) + Math.PI : 0
+      water = {
+        kind: 'river',
+        entries: course.entries,
+        exit: course.exit,
+        course: course.kind,
+        angle,
+        arms: river.arms,
+        halfWidth: riverHalf,
+        hexApothem: extent,
+        bridges,
       }
-      water = { kind: 'river', angle: waterAngle, river: [...left, ...right.reverse()], bridges }
     }
   }
 

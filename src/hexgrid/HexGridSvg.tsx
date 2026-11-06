@@ -4,6 +4,7 @@ import { useMapDispatch, useMapState } from '../state/MapContext'
 import { isRevealableNow } from '../state/mapReducer'
 import { axialToPixel, computeVisibleCoords, hexId, type AxialCoord } from './hexMath'
 import { HexTile } from './HexTile'
+import { riverEntriesFor } from '../engine/rivers'
 
 const HEX_SIZE = 40
 
@@ -112,6 +113,7 @@ export function HexGridSvg() {
             coord={coord}
             size={HEX_SIZE}
             hex={hex}
+            riverEntries={hex ? riverEntriesFor(coord, state.hexes) : undefined}
             isParty={state.partyHexId === id}
             isSelected={state.selectedHexId === id}
             isRevealable={isRevealableNow(state, id)}

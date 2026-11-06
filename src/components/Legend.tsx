@@ -1,5 +1,5 @@
 import { TERRAIN_ORDER } from '../data/tables'
-import { DANGER_COLORS, TERRAIN_COLORS } from '../hexgrid/colors'
+import { DANGER_COLORS, TERRAIN_COLORS, WATER_FEATURE_COLOR } from '../hexgrid/colors'
 
 const DANGER_ORDER = ['Safe', 'Unsafe', 'Risky', 'Deadly'] as const
 
@@ -38,6 +38,14 @@ export function Legend() {
           <li>
             <span className="swatch swatch-dot" style={{ background: '#ffffff' }} />
             Party location
+          </li>
+          <li>
+            <span className="swatch swatch-line" style={{ background: WATER_FEATURE_COLOR }} />
+            River
+          </li>
+          <li>
+            <span className="swatch swatch-oval" style={{ background: WATER_FEATURE_COLOR }} />
+            Lake
           </li>
         </ul>
       </div>

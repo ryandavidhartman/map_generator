@@ -29,7 +29,9 @@ npx tsc -b         # typecheck only
 ## Using it
 
 - **Overland map** (`/`): click a hex next to the party to move there and reveal it; drag to
-  pan, scroll to zoom. Double-click a hex to open its detail view.
+  pan, scroll to zoom. Double-click a hex to open its detail view. Each map has its own seeded
+  world: oceans and coastlines come from a world formula, land terrain follows its revealed
+  neighbors, and rivers (blue lines) and lakes (blue ovals) are rolled as hex features.
 - **Hex detail** (`/hex/:hexId`): terrain, danger, encounter rolls, and the generated site for
   the hex's point of interest, if it has one.
 - **Feature preview** (`/poi/1` to `/poi/200`): generate any row of the d200 Feature table on a

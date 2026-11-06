@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
   axialDistance,
+  axialToPixel,
   computeVisibleCoords,
+  directionAngle,
+  DIRECTION_NAMES,
+  edgeMidpoint,
+  HEX_DIRECTIONS,
   hexId,
+  neighborInDirection,
+  oppositeDirection,
   parseHexId,
   neighborsOf,
 } from './hexMath'
@@ -81,5 +88,46 @@ describe('computeVisibleCoords', () => {
 
   it('returns an empty array for no revealed hexes', () => {
     expect(computeVisibleCoords([])).toEqual([])
+  })
+})
+
+describe('hex directions (flat-top)', () => {
+  it('neighborInDirection matches neighborsOf order, and the opposite direction leads back', () => {
+    const at = { q: 2, r: -3 }
+    const neighbors = neighborsOf(at)
+    for (const d of HEX_DIRECTIONS) {
+      expect(neighborInDirection(at, d)).toEqual(neighbors[d])
+      expect(neighborInDirection(neighbors[d], oppositeDirection(d))).toEqual(at)
+    }
+  })
+
+  it('directions are named by their true screen heading (y down): 0 south-east … 5 south', () => {
+    expect(DIRECTION_NAMES).toEqual({ 0: 'south-east', 1: 'north-east', 2: 'north', 3: 'north-west', 4: 'south-west', 5: 'south' })
+    expect(directionAngle(0)).toBeCloseTo(Math.PI / 6, 9)
+    expect(directionAngle(1)).toBeCloseTo(-Math.PI / 6, 9)
+    expect(directionAngle(2)).toBeCloseTo(-Math.PI / 2, 9)
+    expect(directionAngle(3)).toBeCloseTo(-5 * Math.PI / 6, 9)
+    expect(directionAngle(4)).toBeCloseTo(5 * Math.PI / 6, 9)
+    expect(directionAngle(5)).toBeCloseTo(Math.PI / 2, 9)
+  })
+
+  it('opposite directions are three steps apart', () => {
+    for (const d of HEX_DIRECTIONS) expect(oppositeDirection(oppositeDirection(d))).toBe(d)
+    expect(oppositeDirection(0)).toBe(3)
+    expect(oppositeDirection(2)).toBe(5)
+  })
+
+  it('edgeMidpoint is halfway to the neighbor\'s center, on the shared edge', () => {
+    const size = 10
+    const at = { q: 1, r: 1 }
+    const center = axialToPixel(at, size)
+    for (const d of HEX_DIRECTIONS) {
+      const mid = edgeMidpoint(center, size, d)
+      const other = axialToPixel(neighborInDirection(at, d), size)
+      expect(mid.x).toBeCloseTo((center.x + other.x) / 2, 9)
+      expect(mid.y).toBeCloseTo((center.y + other.y) / 2, 9)
+      // On the edge: at distance size·√3/2 (the apothem) from the center.
+      expect(Math.hypot(mid.x - center.x, mid.y - center.y)).toBeCloseTo((size * Math.sqrt(3)) / 2, 9)
+    }
   })
 })

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { wildernessEncounterChanceForTerrain, encounterPurposeForD8, wildernessCategoryForD100 } from './encounterFrequencyTables'
 import type { Terrain } from './tables'
 
-const ALL_TERRAINS: Terrain[] = ['Desert/arctic', 'Swamp', 'Grassland', 'Forest/jungle', 'River/coast', 'Ocean', 'Mountain']
+const ALL_TERRAINS: Terrain[] = ['Desert/arctic', 'Swamp', 'Grassland', 'Forest/jungle', 'Hills', 'Coast', 'Ocean', 'Mountain']
 
 describe('wildernessEncounterChanceForTerrain', () => {
   it('every terrain has a non-empty chance set, all values within 1-6', () => {
@@ -60,5 +60,19 @@ describe('wildernessCategoryForD100', () => {
   it('throws out of range', () => {
     expect(() => wildernessCategoryForD100('Grassland', 0)).toThrow()
     expect(() => wildernessCategoryForD100('Grassland', 101)).toThrow()
+  })
+})
+
+describe('Hills and Coast (punch-list item 1a)', () => {
+  it('Hills uses the book\'s own 5-6 row and its own category table', () => {
+    expect(wildernessEncounterChanceForTerrain('Hills')).toEqual([5, 6])
+    expect(wildernessCategoryForD100('Hills', 1)).toBe('Airborne')
+    expect(wildernessCategoryForD100('Hills', 31)).toBe('Giant')
+    expect(wildernessCategoryForD100('Hills', 100)).toBe('Special')
+  })
+
+  it('Coast keeps the River row and the Aquatic category table', () => {
+    expect(wildernessEncounterChanceForTerrain('Coast')).toEqual([5, 6])
+    expect(wildernessCategoryForD100('Coast', 70)).toBe('Water')
   })
 })

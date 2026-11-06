@@ -14,6 +14,19 @@ export function rollInRange(min: number, max: number, rng: Rng = Math.random): n
   return min + Math.floor(rng() * (max - min + 1))
 }
 
+// Picks one option in proportion to its weight (a weighted table with arbitrary, non-integer
+// weights — terrain pair weights, settlement shape odds). Weights must be non-negative and not
+// all zero; the last option wins on floating-point leftovers.
+export function pickWeighted<T>(options: [T, number][], rng: Rng = Math.random): T {
+  const total = options.reduce((sum, [, weight]) => sum + weight, 0)
+  let roll = rng() * total
+  for (const [value, weight] of options) {
+    roll -= weight
+    if (roll < 0) return value
+  }
+  return options[options.length - 1][0]
+}
+
 // Sum of `count` independent rolls of a `sides`-sided die (e.g. "2d20").
 export function sumDice(count: number, sides: number, rng: Rng = Math.random): number {
   let total = 0
